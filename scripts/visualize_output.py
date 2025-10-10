@@ -1,7 +1,6 @@
 import os
 import argparse
 import pickle
-import yaml
 import numpy as np
 import matplotlib.pyplot as plt
 import open3d as o3d
@@ -48,7 +47,15 @@ def box2d_corners_xy(center_xy, extent_lwh, yaw_deg):
     return world
 
 
-def draw_topdown_matplotlib(pointclouds_xyz, labels, out_path, mark_poses=None, dpi=200):
+def draw_topdown_matplotlib(pointclouds_xyz,
+                            labels,
+                            out_path,
+                            mark_poses=None,
+                            pose_id_labels=None,
+                            dpi=200):
+    """
+    pose_id_labels: optional list of (x, y, 'id-string') to annotate near pose markers.
+    """
     pts = np.vstack(pointclouds_xyz) if len(pointclouds_xyz) else np.empty((0,3))
     xlim, ylim = compute_xy_limits(pts)
 
@@ -58,9 +65,6 @@ def draw_topdown_matplotlib(pointclouds_xyz, labels, out_path, mark_poses=None, 
 
     # draw 2D boxes projected on XY
     for _, label in labels.items():
-        # Original 3D bbox code used:
-        #   center = location + [0,0,extent[2]]; extent = extent*2; R from angle (roll,yaw,pitch)
-        # For top-down we only need XY center and yaw
         center_xy = np.array(label["location"][:2])
         extent    = np.array(label["extent"])  # half sizes
         yaw_deg   = float(label["angle"][1])   # yaw in degrees
@@ -68,9 +72,18 @@ def draw_topdown_matplotlib(pointclouds_xyz, labels, out_path, mark_poses=None, 
         poly = np.vstack([corners, corners[0]])  # close loop
         ax.plot(poly[:,0], poly[:,1], color="red", linewidth=1.2)
 
+    # pose markers
     if mark_poses:
         mark_poses = np.asarray(mark_poses).reshape(-1,2)
         ax.scatter(mark_poses[:,0], mark_poses[:,1], s=40, c="tab:blue", marker="x")
+
+    # id labels near poses
+    if pose_id_labels:
+        for (x, y, txt) in pose_id_labels:
+            # slight offset so text doesn't sit exactly on the marker
+            ax.text(x + 0.6, y + 0.6, str(txt),
+                    fontsize=9, color="tab:blue",
+                    bbox=dict(facecolor='white', alpha=0.7, edgecolor='none', pad=1.5))
 
     ax.set_xlim(xlim); ax.set_ylim(ylim)
     ax.set_aspect("equal", adjustable="box")
@@ -114,6 +127,7 @@ def main(args):
 
         clouds_xyz = []
         poses_xy = []
+        pose_id_labels = []
 
         for lidar_id, rec in frame_rec.items():
             # PCD path
@@ -146,6 +160,10 @@ def main(args):
             clouds_xyz.append(pts_map)
             poses_xy.append(lidar_pose[:2])
 
+            # collect id labels if requested
+            if args.label_ids:
+                pose_id_labels.append((lidar_pose[0], lidar_pose[1], str(lidar_id)))
+
         out_path = args.out if args.out and len(frame_ids) == 1 else f"{out_dir}/frame_{fid:03d}.png"
 
         draw_topdown_matplotlib(
@@ -153,6 +171,7 @@ def main(args):
             labels,
             out_path=out_path,
             mark_poses=poses_xy if args.poses else None,
+            pose_id_labels=pose_id_labels if args.label_ids else None,
             dpi=args.dpi,
         )
 
@@ -167,5 +186,6 @@ if __name__ == "__main__":
     ap.add_argument("--out", type=str, default=None, help="Output image path (only used when a single frame is processed)")
     ap.add_argument("--dpi", type=int, default=400, help="Figure DPI")
     ap.add_argument("--poses", action="store_true", help="Mark agent LiDAR poses on map")
+    ap.add_argument("--label-ids", action="store_true", help="Write vehicle IDs near each LiDAR pose")
     args = ap.parse_args()
     main(args)
