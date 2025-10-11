@@ -53,7 +53,7 @@ def draw_bbox_topdown(ax, center, l, w, yaw, edgecolor='r', linewidth=1.5, alpha
     poly = np.vstack([rotated, rotated[0]])
     ax.plot(poly[:,0], poly[:,1], '-', color=edgecolor, linewidth=linewidth, alpha=alpha)
 
-def topdown_plot(pcd_map, pred_bboxes, pred_scores, save_path=None, title=None):
+def topdown_plot(args, pcd_map, pred_bboxes, pred_scores, save_path=None, title=None):
     """
     pcd_map: (N, >=3) numpy array in map coords
     pred_bboxes: (M,7) format from Opencood after conversion to center format
@@ -62,14 +62,19 @@ def topdown_plot(pcd_map, pred_bboxes, pred_scores, save_path=None, title=None):
     """
     fig, ax = plt.subplots(figsize=(8,8))
     if pcd_map is not None and pcd_map.shape[0] > 0:
-        ax.scatter(pcd_map[:,0], pcd_map[:,1], s=0.5, alpha=0.6)
+        ax.scatter(
+            pcd_map[:, 0], pcd_map[:, 1],
+            s=0.1, c="black", linewidths=0
+        )
     if pred_bboxes is not None and pred_bboxes.size != 0:
         for i, bb in enumerate(pred_bboxes):
             x, y, z, l, w, h, yaw = bb
-            score = float(pred_scores[i]) if pred_scores is not None and i < len(pred_scores) else None
             draw_bbox_topdown(ax, (x,y), l, w, yaw, edgecolor='r', linewidth=1.2)
-            if score is not None:
-                ax.text(x, y, "{:.2f}".format(score), color='red', fontsize=8, ha='center', va='center')
+
+            if args.score:
+                score = float(pred_scores[i]) if pred_scores is not None and i < len(pred_scores) else None
+                if score is not None:
+                    ax.text(x, y, "{:.2f}".format(score), color='red', fontsize=8, ha='center', va='center')
     ax.set_xlabel("x (map)")
     ax.set_ylabel("y (map)")
     ax.set_aspect('equal', 'box')
@@ -89,6 +94,7 @@ def main():
     parser.add_argument("--fusion", type=str, default="early", choices=["early","intermediate","late"], help="fusion method")
     parser.add_argument("--model", type=str, default="pointpillar", choices=["pixor","voxelnet","second","pointpillar","v2vnet","fpvrcnn"], help="OpenCOOD model name")
     parser.add_argument("--save_dir", type=str, default="./result/single_vehicle", help="where to save pickles/figures")
+    parser.add_argument("--score", action="store_true", help="Display confidence score of bbox")
     args = parser.parse_args()
 
     os.makedirs(args.save_dir, exist_ok=True)
@@ -148,7 +154,7 @@ def main():
     # quick visualization (top-down)
     fig_file = save_file.replace(".pkl", ".png")
     title = "case {} frame {} ego {}".format(args.scenario, args.frame, ego_id)
-    topdown_plot(pcd_map, pred_bboxes, pred_scores, save_path=fig_file, title=title)
+    topdown_plot(args, pcd_map, pred_bboxes, pred_scores, save_path=fig_file, title=title)
     print("Saved figure to:", fig_file)
 
 if __name__ == "__main__":
