@@ -23,7 +23,7 @@ sys.path.append(root)
 from mvp.config import data_root, model_root
 from mvp.data.opv2v_dataset import OPV2VDataset
 from mvp.perception.opencood_perception import OpencoodPerception
-from mvp.data.util import pcd_sensor_to_map, pcd_map_to_sensor
+from mvp.data.util import pcd_sensor_to_map, pcd_map_to_sensor, bbox_sensor_to_map
 
 def draw_bbox_topdown(ax, center, l, w, yaw, edgecolor='r', linewidth=1.5, alpha=0.9):
     """
@@ -113,14 +113,19 @@ def main():
 
     print("Using case {}, frame {}, ego vehicle id {}".format(args.scenario, args.frame, ego_id))
 
-    # run perception on the original multi-vehicle case (no attack)
-    pred_bboxes, pred_scores = perception.run(case[args.frame], ego_id=ego_id)
+    # run perception on the original multi-vehicle case
+    pred_bboxes_sensor, pred_scores = perception.run(case[args.frame], ego_id=ego_id)
 
     # transform LiDAR to map frame for plotting
     # case[frame_id][vehicle]['lidar'] is in sensor frame; use pcd_sensor_to_map
     lidar = frame[ego_id]["lidar"]
     lidar_pose = frame[ego_id]["lidar_pose"]
     pcd_map = pcd_sensor_to_map(lidar, lidar_pose)
+
+    if pred_bboxes_sensor is not None and pred_bboxes_sensor.size != 0:
+        pred_bboxes = bbox_sensor_to_map(pred_bboxes_sensor, lidar_pose)
+    else:
+        pred_bboxes = np.array([])
 
     # Save a pickle containing everything relevant (see description below)
     save_data = {
@@ -130,7 +135,7 @@ def main():
         "lidar_pose": lidar_pose,
         "lidar_sensor": lidar,     # original sensor-frame points
         "lidar_map": pcd_map,      # transformed to map coordinates (x,y,z)
-        "pred_bboxes": pred_bboxes, # Nx7 numpy array (center format after opencood conversions)
+        "pred_bboxes": pred_bboxes, # Nx7 in MAP frame: [x,y,z,l,w,h,yaw]
         "pred_scores": pred_scores, # N numpy
         "fusion": args.fusion,
         "model": args.model,
