@@ -98,23 +98,23 @@ def main():
     perception = OpencoodPerception(fusion_method=args.fusion, model_name=args.model)
 
     # load the case (multi_vehicle_case)
-    case = dataset.get_case(args.case_id, tag="multi_frame", use_lidar=True, use_camera=False)
+    case = dataset.get_case(args.scenario, tag="multi_frame", use_lidar=True, use_camera=False)
     if case is None:
-        raise RuntimeError("Case id {} not found".format(args.case_id))
+        raise RuntimeError("Case id {} not found".format(args.scenario))
 
-    frame = case[args.frame_id]
+    frame = case[args.frame]
     vehicle_keys = list(frame.keys())
     if len(vehicle_keys) == 0:
-        raise RuntimeError("No vehicles in case {} frame {}".format(args.case_id, args.frame_id))
+        raise RuntimeError("No vehicles in case {} frame {}".format(args.scenario, args.frame))
 
-    ego_id = args.vehicle_id if args.vehicle_id is not None else vehicle_keys[0]
+    ego_id = args.vehicle if args.vehicle is not None else vehicle_keys[0]
     if ego_id not in frame:
-        raise RuntimeError("vehicle_id {} not present in case {} frame {}. Available ids: {}".format(ego_id, args.case_id, args.frame_id, vehicle_keys))
+        raise RuntimeError("vehicle_id {} not present in case {} frame {}. Available ids: {}".format(ego_id, args.scenario, args.frame, vehicle_keys))
 
-    print("Using case {}, frame {}, ego vehicle id {}".format(args.case_id, args.frame_id, ego_id))
+    print("Using case {}, frame {}, ego vehicle id {}".format(args.scenario, args.frame, ego_id))
 
     # run perception on the original multi-vehicle case (no attack)
-    pred_bboxes, pred_scores = perception.run(case[args.frame_id], ego_id=ego_id)
+    pred_bboxes, pred_scores = perception.run(case[args.frame], ego_id=ego_id)
 
     # transform LiDAR to map frame for plotting
     # case[frame_id][vehicle]['lidar'] is in sensor frame; use pcd_sensor_to_map
@@ -124,8 +124,8 @@ def main():
 
     # Save a pickle containing everything relevant (see description below)
     save_data = {
-        "case_id": args.case_id,
-        "frame_id": args.frame_id,
+        "case_id": args.scenario,
+        "frame_id": args.frame,
         "ego_id": ego_id,
         "lidar_pose": lidar_pose,
         "lidar_sensor": lidar,     # original sensor-frame points
@@ -135,14 +135,14 @@ def main():
         "fusion": args.fusion,
         "model": args.model,
     }
-    save_file = os.path.join(args.save_dir, "case_{:06d}_frame_{:02d}_ego_{}.pkl".format(args.case_id, args.frame_id, ego_id))
+    save_file = os.path.join(args.save_dir, "case_{:06d}_frame_{:02d}_ego_{}.pkl".format(args.scenario, args.frame, ego_id))
     with open(save_file, 'wb') as f:
         pickle.dump(save_data, f, protocol=pickle.HIGHEST_PROTOCOL)
     print("Saved perception result to:", save_file)
 
     # quick visualization (top-down)
     fig_file = save_file.replace(".pkl", ".png")
-    title = "case {} frame {} ego {}".format(args.case_id, args.frame_id, ego_id)
+    title = "case {} frame {} ego {}".format(args.scenario, args.frame, ego_id)
     topdown_plot(pcd_map, pred_bboxes, pred_scores, save_path=fig_file, title=title)
     print("Saved figure to:", fig_file)
 
