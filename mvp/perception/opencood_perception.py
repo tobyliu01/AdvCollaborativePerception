@@ -25,7 +25,7 @@ from .perception import Perception
 from mvp.config import model_root, data_root
 from mvp.tools.iou import iou3d
 from mvp.evaluate.detection import iou3d_batch
-from .iou_util import oriented_box_intersection_2d
+# from .iou_util import oriented_box_intersection_2d
 from mvp.data.util import pcd_sensor_to_map, pcd_map_to_sensor, pose_to_transformation
 
 
@@ -721,7 +721,7 @@ class OpencoodPerception(Perception):
         corners2d_b = torch.unsqueeze(box_utils.boxes_to_corners2d(bboxes_b, order="lwh")[:,:,:2], 0)
         area_a = bboxes_a[:, 3] * bboxes_a[:, 4]
         area_b = bboxes_b[:, 3] * bboxes_b[:, 4]
-        area_inter, _ = oriented_box_intersection_2d(corners2d_a, corners2d_b)
+        # area_inter, _ = oriented_box_intersection_2d(corners2d_a, corners2d_b)
         area_inter = area_inter.squeeze()
         height_inter = torch.clip(
             torch.min(bboxes_a[:, 2] + 0.5 * bboxes_a[:, 5], bboxes_b[:, 2] + 0.5 * bboxes_b[:, 5]) - \
