@@ -21,6 +21,18 @@ cd mvp/perception/cuda_op
 conda run --live-stream -n $env_name python setup.py install
 cd -
 
+# Must run before setting up OpenCOOD
+# export CC=$(which gcc)
+# export CXX=$(which g++)
+# export CUDAHOSTCXX=$(which g++)
+# export LDSHARED="$(which gcc) -shared"
+# unset CPATH C_INCLUDE_PATH CPLUS_INCLUDE_PATH INCLUDE LIBRARY_PATH
+# export LD_LIBRARY_PATH="$CONDA_PREFIX/lib:$LD_LIBRARY_PATH"
+# export LD_LIBRARY_PATH="$(dirname $(gcc -print-file-name=libgomp.so.1)):$LD_LIBRARY_PATH"
+# export CFLAGS="-I/usr/include -I$CONDA_PREFIX/include"
+# export CXXFLAGS="-I/usr/include -I$CONDA_PREFIX/include"
+# export TORCH_CUDA_ARCH_LIST="8.0"
+
 echo "Setting up OpenCOOD ..."
 cd third_party/OpenCOOD
 conda run --live-stream -n $env_name python opencood/utils/setup.py build_ext --inplace
