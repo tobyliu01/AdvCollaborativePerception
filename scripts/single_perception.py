@@ -81,7 +81,7 @@ def topdown_plot(args, pcd_map, pred_bboxes, pred_scores, save_path=None, title=
     if title:
         ax.set_title(title)
     if save_path:
-        plt.savefig(save_path, dpi=200, bbox_inches='tight')
+        plt.savefig(save_path, dpi=400, bbox_inches='tight')
     else:
         plt.show()
     plt.close(fig)
@@ -146,7 +146,7 @@ def main():
         "fusion": args.fusion,
         "model": args.model,
     }
-    save_file = os.path.join(args.save_dir, "case_{:06d}_frame_{:02d}_ego_{}.pkl".format(args.scenario, args.frame, ego_id))
+    save_file = os.path.join(args.save_dir, "case_{:06d}_frame_{:03d}_ego_{}.pkl".format(args.scenario, args.frame, ego_id))
     with open(save_file, 'wb') as f:
         pickle.dump(save_data, f, protocol=pickle.HIGHEST_PROTOCOL)
     print("Saved perception result to:", save_file)
