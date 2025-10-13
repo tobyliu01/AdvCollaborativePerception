@@ -108,7 +108,7 @@ def main():
     print("Using case {}, frame {}, ego vehicle id {}".format(args.scenario, args.frame, ego_id))
 
     # run perception on the original multi-frame case
-    pred_bboxes_sensor, pred_scores = perception.run(case[args.frame], ego_id=ego_id)
+    pred_bboxes_sensor, pred_scores = perception.run(frame, ego_id=ego_id)
 
     # transform LiDAR to map frame for plotting
     # case[frame_id][vehicle]['lidar'] is in sensor frame; use pcd_sensor_to_map

@@ -51,11 +51,8 @@ def draw_topdown_matplotlib(pointclouds_xyz,
                             labels,
                             out_path,
                             mark_poses=None,
-                            pose_id_labels=None,
+                            gt_id_labels=None,
                             dpi=200):
-    """
-    pose_id_labels: optional list of (x, y, 'id-string') to annotate near pose markers.
-    """
     pts = np.vstack(pointclouds_xyz) if len(pointclouds_xyz) else np.empty((0,3))
     xlim, ylim = compute_xy_limits(pts)
 
@@ -69,21 +66,24 @@ def draw_topdown_matplotlib(pointclouds_xyz,
         extent    = np.array(label["extent"])  # half sizes
         yaw_deg   = float(label["angle"][1])   # yaw in degrees
         corners = box2d_corners_xy(center_xy, extent, yaw_deg)
-        poly = np.vstack([corners, corners[0]])  # close loop
+        poly = np.vstack([corners, corners[0]])
         ax.plot(poly[:,0], poly[:,1], color="red", linewidth=1.2)
 
-    # pose markers
+    # pose markers for LiDAR agents
     if mark_poses:
         mark_poses = np.asarray(mark_poses).reshape(-1,2)
         ax.scatter(mark_poses[:,0], mark_poses[:,1], s=40, c="tab:blue", marker="x")
 
-    # id labels near poses
-    if pose_id_labels:
-        for (x, y, txt) in pose_id_labels:
-            # slight offset so text doesn't sit exactly on the marker
-            ax.text(x + 0.6, y + 0.6, str(txt),
-                    fontsize=9, color="tab:blue",
-                    bbox=dict(facecolor='white', alpha=0.7, edgecolor='none', pad=1.5))
+    # id labels for ALL GT objects (from labels dict)
+    if gt_id_labels:
+        # small dots at GT centers
+        gt_xy = np.array([[x, y] for (x, y, _) in gt_id_labels])
+        if gt_xy.size > 0:
+            ax.scatter(gt_xy[:,0], gt_xy[:,1], s=10, c="tab:green", marker="o")
+        for (x, y, txt) in gt_id_labels:
+            ax.text(x + 0.4, y + 0.4, str(txt),
+                    fontsize=8, color="tab:green",
+                    bbox=dict(facecolor='white', alpha=0.6, edgecolor='none', pad=1.0))
 
     ax.set_xlim(xlim); ax.set_ylim(ylim)
     ax.set_aspect("equal", adjustable="box")
@@ -106,11 +106,10 @@ def main(args):
         some = list(meta.keys())[:10]
         raise Exception(f"Wrong scenario: {scenario_key}. Examples: {some}")
 
-    # create output directory
     out_dir = f"output/{scenario_key}"
     os.makedirs(out_dir, exist_ok=True)
 
-    # decide which frames to process
+    # frames to process
     if args.frame is None or args.frame < 0:
         frame_ids = sorted(meta[scenario_key]["data"].keys())
         print("Total frames:", len(frame_ids))
@@ -120,7 +119,6 @@ def main(args):
             raise Exception(f"Wrong frame: {args.frame}. Available: {available[:20]}{' ...' if len(available)>20 else ''}")
         frame_ids = [args.frame]
 
-    # loop over frames
     for fid in frame_ids:
         frame_rec = meta[scenario_key]["data"][fid]
         labels = meta[scenario_key]["label"][fid]
@@ -128,9 +126,16 @@ def main(args):
         clouds_xyz = []
         poses_xy = []
         pose_id_labels = []
+        gt_id_labels = []
 
+        if args.vehicle_id:
+            for obj_id, lab in labels.items():
+                loc = lab.get("location", None)
+                if loc is not None and len(loc) >= 2:
+                    gt_id_labels.append((float(loc[0]), float(loc[1]), str(obj_id)))
+
+        # per-agent clouds
         for lidar_id, rec in frame_rec.items():
-            # PCD path
             pcd_path = rec.get("lidar")
             if pcd_path is None:
                 continue
@@ -160,9 +165,6 @@ def main(args):
             clouds_xyz.append(pts_map)
             poses_xy.append(lidar_pose[:2])
 
-            # collect id labels if requested
-            if args.label_ids:
-                pose_id_labels.append((lidar_pose[0], lidar_pose[1], str(lidar_id)))
 
         out_path = args.out if args.out and len(frame_ids) == 1 else f"{out_dir}/frame_{fid:03d}.png"
 
@@ -171,7 +173,7 @@ def main(args):
             labels,
             out_path=out_path,
             mark_poses=poses_xy if args.poses else None,
-            pose_id_labels=pose_id_labels if args.label_ids else None,
+            gt_id_labels=gt_id_labels if args.vehicle_id else None,
             dpi=args.dpi,
         )
 
@@ -186,6 +188,6 @@ if __name__ == "__main__":
     ap.add_argument("--out", type=str, default=None, help="Output image path (only used when a single frame is processed)")
     ap.add_argument("--dpi", type=int, default=400, help="Figure DPI")
     ap.add_argument("--poses", action="store_true", help="Mark agent LiDAR poses on map")
-    ap.add_argument("--label-ids", action="store_true", help="Write vehicle IDs near each LiDAR pose")
+    ap.add_argument("--vehicle-id", action="store_true", help="Write vehicle IDs near each bounding boxes")
     args = ap.parse_args()
     main(args)
