@@ -180,7 +180,7 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser("Save top-down OPV2V LiDAR figure (headless-safe).")
     ap.add_argument("--datadir", type=str, default="../data/OPV2V",
                     help="Path to dataset root containing train/validate/test.pkl")
-    ap.add_argument("--dataset", type=str, required=True, help="train / validate / test")
+    ap.add_argument("--dataset", type=str, default="test", help="train / validate / test")
     ap.add_argument("--scenario", type=str, required=True, help="Scenario id (exact key in the pkl)")
     ap.add_argument("--frame", type=int, default=None, help="Frame index; if omitted, all frames are processed")
     ap.add_argument("--out", type=str, default=None, help="Output image path (only used when a single frame is processed)")

@@ -1,14 +1,3 @@
-"""
-Run OpenCOOD perception on original LiDAR for a single selected vehicle
-and save+visualize the result.
-
-Usage (examples):
-    python run_opencood_on_single_vehicle.py --case_id 0 --frame_id 9 --vehicle_id 3
-    python run_opencood_on_single_vehicle.py --fusion early --model pointpillar
-
-If vehicle_id is omitted, the script will pick the first vehicle id found
-in the selected frame.
-"""
 import os
 import sys
 import argparse
@@ -16,7 +5,6 @@ import pickle
 import numpy as np
 import matplotlib.pyplot as plt
 
-# ensure repo imports like evaluate.py/opencood_perception.py work
 root = os.path.join(os.path.abspath(os.path.dirname(__file__)), "../")
 sys.path.append(root)
 
@@ -103,7 +91,7 @@ def main():
     dataset = OPV2VDataset(root_path=os.path.join(data_root, "OPV2V"), mode="test")
     perception = OpencoodPerception(fusion_method=args.fusion, model_name=args.model)
 
-    # load the case (multi_vehicle_case)
+    # load the case (multi-frame case)
     case = dataset.get_case(args.scenario, tag="multi_frame", use_lidar=True, use_camera=False)
     if case is None:
         raise RuntimeError("Case id {} not found".format(args.scenario))
@@ -119,7 +107,7 @@ def main():
 
     print("Using case {}, frame {}, ego vehicle id {}".format(args.scenario, args.frame, ego_id))
 
-    # run perception on the original multi-vehicle case
+    # run perception on the original multi-frame case
     pred_bboxes_sensor, pred_scores = perception.run(case[args.frame], ego_id=ego_id)
 
     # transform LiDAR to map frame for plotting
