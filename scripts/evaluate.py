@@ -49,9 +49,9 @@ perception_dict = OrderedDict([(x.name, x) for x in perception_list])
 attacker_list = [
     # LidarSpoofEarlyAttacker(dataset, dense=0, sync=0),
     # LidarSpoofEarlyAttacker(dataset, dense=1, sync=0),
-    # LidarSpoofEarlyAttacker(dataset, dense=2, sync=0),
+    LidarSpoofEarlyAttacker(dataset, dense=2, sync=0),
     # LidarSpoofEarlyAttacker(dataset, dense=2, sync=1),
-    LidarSpoofEarlyAttacker(dataset, dense=3, sync=0),
+    # LidarSpoofEarlyAttacker(dataset, dense=3, sync=0),
     # LidarSpoofEarlyAttacker(dataset, dense=3, sync=1),
     # LidarRemoveEarlyAttacker(dataset, advshape=0, dense=0, sync=0),
     # LidarRemoveEarlyAttacker(dataset, advshape=0, dense=1, sync=0),
@@ -87,7 +87,7 @@ defender_list = [
 defender_dict = OrderedDict([(x.name, x) for x in defender_list])
 
 pickle_cache = OrderedDict()
-pickle_cache_size = 600
+pickle_cache_size = 20
 
 
 def pickle_cache_load(file_path):

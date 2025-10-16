@@ -40,7 +40,9 @@ class OPV2VDataset(Dataset):
             with open(cases_path, 'wb') as f:
                 pickle.dump(self.cases, f)
 
-        attacks_path = os.path.join(root_path, "{}_attacks.pkl".format(mode))
+        # attacks_path = os.path.join(root_path, "{}_attacks.pkl".format(mode))
+        attacks_path = os.path.join(root_path, "{}_attacks_self.pkl".format(mode)) # FOR MODIFIED VICTIM ID
+        print("attack_path:", attacks_path)
         if os.path.exists(attacks_path):
             with open(attacks_path, 'rb') as f:
                 self.attacks = pickle.load(f)

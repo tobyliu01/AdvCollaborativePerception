@@ -15,7 +15,8 @@ from mvp.tools.ray_tracing import get_model_mesh, ray_intersection
 class LidarSpoofEarlyAttacker(Attacker):
     def __init__(self, dataset=None, dense=3, sync=1):
         super().__init__()
-        self.name = "lidar_spoof"
+        # self.name = "lidar_spoof"
+        self.name = "lidar_spoof_self" # FOR MODIFIED VICTIM ID
         self.dataset = dataset
         self.load_benchmark_meta()
         self.name = "lidar_spoof_early"
@@ -31,13 +32,14 @@ class LidarSpoofEarlyAttacker(Attacker):
         self.sync = sync
 
         # A 3D model as the fake car.
-        self.default_car_model = "car_0200"
+        # self.default_car_model = "car_0200"
+        self.default_car_model = "three_boards"
         self.mesh = o3d.io.read_triangle_mesh(os.path.join(model_3d_path, "{}.ply".format(self.default_car_model)))
         # Divides the 3D model into 4 pieces.
         mesh_divide = pickle.load(open(os.path.join(model_3d_path, "spoof/mesh_divide.pkl"), "rb"))
         meshes = []
-        for vertex_indices in mesh_divide:
-            meshes.append(self.mesh.select_by_index(vertex_indices))
+        # for vertex_indices in mesh_divide:
+        #     meshes.append(self.mesh.select_by_index(vertex_indices))
         self.meshes = meshes
 
         # In the mode of injecting dense points, fix the distance between the target and the sensor.

@@ -27,6 +27,8 @@ class Attacker():
 
     def load_benchmark_meta(self):
         try:
+            path = os.path.join(self.dataset.root_path, "attack", "{}.pkl".format(self.name))
+            print("benchmark_path:", path)
             with open(os.path.join(self.dataset.root_path, "attack", "{}.pkl".format(self.name)), 'rb') as f:
                 self.attack_list = pickle.load(f)
         except Exception as e:
