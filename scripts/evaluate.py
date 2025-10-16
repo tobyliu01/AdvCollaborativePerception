@@ -41,43 +41,43 @@ dataset = OPV2VDataset(root_path=os.path.join(data_root, "OPV2V"), mode="test")
 
 perception_list = [
     OpencoodPerception(fusion_method="early", model_name="pointpillar"),
-    OpencoodPerception(fusion_method="intermediate", model_name="pointpillar"),
-    OpencoodPerception(fusion_method="late", model_name="pointpillar"),
+    # OpencoodPerception(fusion_method="intermediate", model_name="pointpillar"),
+    # OpencoodPerception(fusion_method="late", model_name="pointpillar"),
 ]
 perception_dict = OrderedDict([(x.name, x) for x in perception_list])
 
 attacker_list = [
-    LidarSpoofEarlyAttacker(dataset, dense=0, sync=0),
-    LidarSpoofEarlyAttacker(dataset, dense=1, sync=0),
-    LidarSpoofEarlyAttacker(dataset, dense=2, sync=0),
-    LidarSpoofEarlyAttacker(dataset, dense=2, sync=1),
+    # LidarSpoofEarlyAttacker(dataset, dense=0, sync=0),
+    # LidarSpoofEarlyAttacker(dataset, dense=1, sync=0),
+    # LidarSpoofEarlyAttacker(dataset, dense=2, sync=0),
+    # LidarSpoofEarlyAttacker(dataset, dense=2, sync=1),
     LidarSpoofEarlyAttacker(dataset, dense=3, sync=0),
-    LidarSpoofEarlyAttacker(dataset, dense=3, sync=1),
-    LidarRemoveEarlyAttacker(dataset, advshape=0, dense=0, sync=0),
-    LidarRemoveEarlyAttacker(dataset, advshape=0, dense=1, sync=0),
-    LidarRemoveEarlyAttacker(dataset, advshape=0, dense=2, sync=0),
-    LidarRemoveEarlyAttacker(dataset, advshape=1, dense=0, sync=0),
-    LidarRemoveEarlyAttacker(dataset, advshape=1, dense=1, sync=0),
-    LidarRemoveEarlyAttacker(dataset, advshape=1, dense=2, sync=0),
-    LidarRemoveEarlyAttacker(dataset, advshape=1, dense=2, sync=1),
-    LidarRemoveEarlyAttacker(dataset, advshape=1, dense=3, sync=0),
-    LidarRemoveEarlyAttacker(dataset, advshape=1, dense=3, sync=1),
-    LidarSpoofIntermediateAttacker(perception_dict["pointpillar_intermediate"], dataset, step=100, sync=0, init=False, online=False),
-    LidarSpoofIntermediateAttacker(perception_dict["pointpillar_intermediate"], dataset, step=2, sync=0, init=False, online=False),
-    LidarSpoofIntermediateAttacker(perception_dict["pointpillar_intermediate"], dataset, step=2, sync=1, init=False, online=False),
-    LidarSpoofIntermediateAttacker(perception_dict["pointpillar_intermediate"], dataset, step=2, sync=1, init=False, online=True),
-    LidarSpoofIntermediateAttacker(perception_dict["pointpillar_intermediate"], dataset, step=2, sync=0, init=True, online=False),
-    LidarSpoofIntermediateAttacker(perception_dict["pointpillar_intermediate"], dataset, step=2, sync=1, init=True, online=False),
-    LidarSpoofIntermediateAttacker(perception_dict["pointpillar_intermediate"], dataset, step=2, sync=1, init=True, online=True),
-    LidarRemoveIntermediateAttacker(perception_dict["pointpillar_intermediate"], dataset, step=100, sync=0, init=False, online=False),
-    LidarRemoveIntermediateAttacker(perception_dict["pointpillar_intermediate"], dataset, step=2, sync=0, init=False, online=False),
-    LidarRemoveIntermediateAttacker(perception_dict["pointpillar_intermediate"], dataset, step=2, sync=1, init=False, online=False),
-    LidarRemoveIntermediateAttacker(perception_dict["pointpillar_intermediate"], dataset, step=2, sync=1, init=False, online=True),
-    LidarRemoveIntermediateAttacker(perception_dict["pointpillar_intermediate"], dataset, step=2, sync=0, init=True, online=False),
-    LidarRemoveIntermediateAttacker(perception_dict["pointpillar_intermediate"], dataset, step=2, sync=1, init=True, online=False),
-    LidarRemoveIntermediateAttacker(perception_dict["pointpillar_intermediate"], dataset, step=2, sync=1, init=True, online=True),
-    LidarSpoofLateAttacker(perception_dict["pointpillar_late"], dataset),
-    LidarRemoveLateAttacker(perception_dict["pointpillar_late"], dataset),
+    # LidarSpoofEarlyAttacker(dataset, dense=3, sync=1),
+    # LidarRemoveEarlyAttacker(dataset, advshape=0, dense=0, sync=0),
+    # LidarRemoveEarlyAttacker(dataset, advshape=0, dense=1, sync=0),
+    # LidarRemoveEarlyAttacker(dataset, advshape=0, dense=2, sync=0),
+    # LidarRemoveEarlyAttacker(dataset, advshape=1, dense=0, sync=0),
+    # LidarRemoveEarlyAttacker(dataset, advshape=1, dense=1, sync=0),
+    # LidarRemoveEarlyAttacker(dataset, advshape=1, dense=2, sync=0),
+    # LidarRemoveEarlyAttacker(dataset, advshape=1, dense=2, sync=1),
+    # LidarRemoveEarlyAttacker(dataset, advshape=1, dense=3, sync=0),
+    # LidarRemoveEarlyAttacker(dataset, advshape=1, dense=3, sync=1),
+    # LidarSpoofIntermediateAttacker(perception_dict["pointpillar_intermediate"], dataset, step=100, sync=0, init=False, online=False),
+    # LidarSpoofIntermediateAttacker(perception_dict["pointpillar_intermediate"], dataset, step=2, sync=0, init=False, online=False),
+    # LidarSpoofIntermediateAttacker(perception_dict["pointpillar_intermediate"], dataset, step=2, sync=1, init=False, online=False),
+    # LidarSpoofIntermediateAttacker(perception_dict["pointpillar_intermediate"], dataset, step=2, sync=1, init=False, online=True),
+    # LidarSpoofIntermediateAttacker(perception_dict["pointpillar_intermediate"], dataset, step=2, sync=0, init=True, online=False),
+    # LidarSpoofIntermediateAttacker(perception_dict["pointpillar_intermediate"], dataset, step=2, sync=1, init=True, online=False),
+    # LidarSpoofIntermediateAttacker(perception_dict["pointpillar_intermediate"], dataset, step=2, sync=1, init=True, online=True),
+    # LidarRemoveIntermediateAttacker(perception_dict["pointpillar_intermediate"], dataset, step=100, sync=0, init=False, online=False),
+    # LidarRemoveIntermediateAttacker(perception_dict["pointpillar_intermediate"], dataset, step=2, sync=0, init=False, online=False),
+    # LidarRemoveIntermediateAttacker(perception_dict["pointpillar_intermediate"], dataset, step=2, sync=1, init=False, online=False),
+    # LidarRemoveIntermediateAttacker(perception_dict["pointpillar_intermediate"], dataset, step=2, sync=1, init=False, online=True),
+    # LidarRemoveIntermediateAttacker(perception_dict["pointpillar_intermediate"], dataset, step=2, sync=0, init=True, online=False),
+    # LidarRemoveIntermediateAttacker(perception_dict["pointpillar_intermediate"], dataset, step=2, sync=1, init=True, online=False),
+    # LidarRemoveIntermediateAttacker(perception_dict["pointpillar_intermediate"], dataset, step=2, sync=1, init=True, online=True),
+    # LidarSpoofLateAttacker(perception_dict["pointpillar_late"], dataset),
+    # LidarRemoveLateAttacker(perception_dict["pointpillar_late"], dataset),
 ]
 attacker_dict = OrderedDict([(x.name, x) for x in attacker_list])
 
@@ -194,7 +194,8 @@ def attack_perception(attacker, case_id=None, case=None, data_dir=None, attack_i
 
     if isinstance(attacker, LidarSpoofEarlyAttacker) or isinstance(attacker, LidarRemoveEarlyAttacker):
         # Early-fusion attacks are block box attacks. We need to apply certain models to evaluate their performance.
-        for perception_name in ["pointpillar_early", "pointpillar_intermediate"]:
+        # for perception_name in ["pointpillar_early", "pointpillar_intermediate"]:
+        for perception_name in ["pointpillar_early"]:
             perception_save_file = os.path.join(data_dir, "{}.pkl".format(perception_name))
             perception = perception_dict[perception_name]
             perception_feature = [{} for _ in range(total_frames)]
@@ -202,6 +203,10 @@ def attack_perception(attacker, case_id=None, case=None, data_dir=None, attack_i
                 pred_bboxes, pred_scores = perception.run(new_case[frame_id], ego_id=attack_opts["victim_vehicle_id"])
                 perception_feature[frame_id][attack_opts["victim_vehicle_id"]] = {"pred_bboxes": pred_bboxes, "pred_scores": pred_scores}
             pickle_cache_dump(perception_feature, perception_save_file)
+
+            new_case[frame_id][attack_opts["victim_vehicle_id"]]["result_bboxes"] = pred_bboxes
+            new_case[frame_id][attack_opts["victim_vehicle_id"]]["result_scores"] = pred_scores
+            print("Num of pred bboxes:", len(pred_bboxes))
             
             # Visualization
             dataset.load_feature(new_case, perception_feature)
@@ -450,35 +455,35 @@ def defense_evaluation(attacker, defender, perception_name):
 
 def main():
     # First do perception on normal cases as the baseline.
-    logging.info("######################## Perception on normal cases ########################")
-    normal_perception()
+    # logging.info("######################## Perception on normal cases ########################")
+    # normal_perception()
 
     # Launch all attacks.
     logging.info("######################## Launching attacks ########################")
     for attacker_name, attacker in attacker_dict.items():
         attack_perception(attacker)
-        if "early" in attacker_name:
-            for perception_name in ["pointpillar_early", "pointpillar_intermediate"]:
-                attack_evaluation(attacker, perception_name)
-        else:
-            attack_evaluation(attacker, attacker.perception.name)
+        # if "early" in attacker_name:
+        #     for perception_name in ["pointpillar_early", "pointpillar_intermediate"]:
+        #         attack_evaluation(attacker, perception_name)
+        # else:
+        #     attack_evaluation(attacker, attacker.perception.name)
     
-    # Precompute occupancy maps for defense.
-    logging.info("######################## Generating occupancy maps ########################")
-    lidar_seg_api = SqueezeSegInterface()
-    occupancy_map(lidar_seg_api)
+    # # Precompute occupancy maps for defense.
+    # logging.info("######################## Generating occupancy maps ########################")
+    # lidar_seg_api = SqueezeSegInterface()
+    # occupancy_map(lidar_seg_api)
 
-    # Launch the defense on each attack.
-    logging.info("######################## Launching defenses ########################")
-    for attacker_name, attacker in attacker_dict.items():
-        for defender_name, defender in defender_dict.items():
-            if "early" in attacker_name:
-                for perception_name in ["pointpillar_early", "pointpillar_intermediate"]:
-                    defense(attacker, defender, perception_name)
-                    defense_evaluation(attacker, defender, perception_name)
-            else:
-                defense(attacker, defender, attacker.perception.name)
-                defense_evaluation(attacker, defender, perception_name)
+    # # Launch the defense on each attack.
+    # logging.info("######################## Launching defenses ########################")
+    # for attacker_name, attacker in attacker_dict.items():
+    #     for defender_name, defender in defender_dict.items():
+    #         if "early" in attacker_name:
+    #             for perception_name in ["pointpillar_early", "pointpillar_intermediate"]:
+    #                 defense(attacker, defender, perception_name)
+    #                 defense_evaluation(attacker, defender, perception_name)
+    #         else:
+    #             defense(attacker, defender, attacker.perception.name)
+    #             defense_evaluation(attacker, defender, perception_name)
 
 
 if __name__ == "__main__":
