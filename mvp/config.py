@@ -14,7 +14,9 @@ model_3d_examples = {
     "car_0200": np.array([0,0,0,4.30,1.91,1.26,0]),
     "car_two_sides": np.array([0,0,0,4.30,1.91,1.26,0]),
     "one_board": np.array([0,0,0,4.30,0.05,1.26,0]),
-    "three_boards": np.array([0,0,0,4.30,1.91,1.26,0])
+    "three_boards": np.array([0,0,0,4.30,1.91,1.26,0]),
+    "two_boards": np.array([0,0,0,4.30,1.91,1.26,0]),
+    "five_boards": np.array([0,0,0,4.30,1.91,1.26,0]),
 }
 
 class_id_map = {
