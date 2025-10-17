@@ -1,13 +1,13 @@
 import numpy as np
-import open3d as o3d
 from mvp.data.util import rotation_matrix
-import cv2
+import os
 import matplotlib.pyplot as plt
 import matplotlib
 
 from .general import get_xylims
 from mvp.config import model_3d_examples
 from mvp.data.util import bbox_shift, bbox_rotate, pcd_sensor_to_map, bbox_sensor_to_map
+from mvp.visualize.lidar_3d_export import lidar_to_map_xyz, concat_xyz, save_ascii_ply_xyz
 from .general import draw_bbox_2d
 
 
@@ -25,6 +25,19 @@ def draw_attack(attack, normal_case, attack_case, mode="multi_frame", show=False
                 else:
                     ax = axes[frame_ids.index(frame_id)][case_id]
 
+                # save 3d point clouds
+                xyz_list = []
+                victim_vehicle_id = attack["attack_meta"]["victim_vehicle_id"]
+                victim_vehicle_data = case[frame_id][victim_vehicle_id]
+                xyz_map = lidar_to_map_xyz(victim_vehicle_data["lidar"], victim_vehicle_data["lidar_pose"])
+                xyz_list.append(xyz_map)
+                # for vehicle_id, vehicle_data in case[frame_id].items():
+                #     xyz_map = lidar_to_map_xyz(vehicle_data["lidar"], vehicle_data["lidar_pose"])
+                #     xyz_list.append(xyz_map)
+                pointcloud_all = concat_xyz(xyz_list)
+                out_path = os.path.splitext(save)[0] + ".ply"
+                save_ascii_ply_xyz(out_path, pointcloud_all)
+                
                 # draw point clouds
                 # pointcloud_all = pcd_sensor_to_map(case[frame_id][attack["attack_opts"]["attacker_vehicle_id"]]["lidar"], case[frame_id][attack["attack_opts"]["attacker_vehicle_id"]]["lidar_pose"])[:,:3]
                 pointcloud_all = np.vstack([pcd_sensor_to_map(vehicle_data["lidar"], vehicle_data["lidar_pose"])[:,:3] for vehicle_id, vehicle_data in case[frame_id].items()])
@@ -37,8 +50,6 @@ def draw_attack(attack, normal_case, attack_case, mode="multi_frame", show=False
                 # label the location of attacker and victim
                 attacker_vehicle_id = attack["attack_meta"]["attacker_vehicle_id"]
                 attacker_vehicle_data = case[frame_id][attacker_vehicle_id]
-                victim_vehicle_id = attack["attack_meta"]["victim_vehicle_id"]
-                victim_vehicle_data = case[frame_id][victim_vehicle_id]
                 ax.scatter(*victim_vehicle_data["lidar_pose"][:2].tolist(), s=100, c="green")
                 ax.scatter(*attacker_vehicle_data["lidar_pose"][:2].tolist(), s=100, c="red")
 
