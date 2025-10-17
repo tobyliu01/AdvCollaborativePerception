@@ -496,10 +496,6 @@ class OpencoodPerception(Perception):
 
         # loop over all CAVs to process information
         for cav_id, selected_cav_base in base_data_dict.items():
-            # only consider ego perception
-            if cav_id != ego_id:
-                continue
-
             # check if the cav is within the communication range with ego
             distance = \
                 math.sqrt((selected_cav_base['params']['lidar_pose'][0] -
