@@ -152,8 +152,39 @@ class LidarSpoofEarlyAttacker(Attacker):
         car_mesh = get_model_mesh(self.default_car_model, attack_opts["position"])
 
         intersect_points = ray_intersection([car_mesh], rays)
+
+        # in_range_mask = (intersect_points[:,0] ** 2 < 10000)
+        # occlusion_mask =  (attacker_pcd[:,0] / intersect_points[:,0] > 1)
+
+        # 1) determine which intersection results are valid
+        valid_hit = np.isfinite(intersect_points).all(axis=1)
+
+        # 2) compute distance along ray to intersection (t_hit)
+        ray_origins = rays[:, :3]
+        t_hit = np.full((rays.shape[0],), np.inf, dtype=np.float32)
+        if valid_hit.any():
+            diff = intersect_points[valid_hit] - ray_origins[valid_hit]
+            t_hit[valid_hit] = np.linalg.norm(diff, axis=1)
+
+        # 3) original measured distance along ray (t_orig)
+        t_orig = np.linalg.norm(attacker_pcd, axis=1)
+
+        # 4) occlusion comparison
+        eps = 1e-6
+        occlusion_mask = (t_hit + eps) < t_orig
+
+        # 5) keep only hits "in range"
         in_range_mask = (intersect_points[:,0] ** 2 < 10000)
-        occlusion_mask =  (attacker_pcd[:,0] / intersect_points[:,0] > 1)
+
+        # 6) indices where we should replace original points by intersection
+        replace_indices = np.where(in_range_mask & occlusion_mask)[0]
+
+        # 7) replacement
+        if replace_indices.size > 0:
+            replace_data = intersect_points[replace_indices]
+            attacker_pcd[replace_indices, :3] = replace_data
+        else:
+            replace_data = None
 
         extra_points_list = []
         for extra_rays in extra_rays_list:
