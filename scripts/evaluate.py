@@ -47,9 +47,9 @@ perception_list = [
 perception_dict = OrderedDict([(x.name, x) for x in perception_list])
 
 attacker_list = [
-    # LidarSpoofEarlyAttacker(dataset, dense=0, sync=0),
+    LidarSpoofEarlyAttacker(dataset, dense=0, sync=0),
     # LidarSpoofEarlyAttacker(dataset, dense=1, sync=0),
-    LidarSpoofEarlyAttacker(dataset, dense=2, sync=0),
+    # LidarSpoofEarlyAttacker(dataset, dense=2, sync=0),
     # LidarSpoofEarlyAttacker(dataset, dense=2, sync=1),
     # LidarSpoofEarlyAttacker(dataset, dense=3, sync=0),
     # LidarSpoofEarlyAttacker(dataset, dense=3, sync=1),
