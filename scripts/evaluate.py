@@ -206,7 +206,7 @@ def attack_perception(attacker, case_id=None, case=None, data_dir=None, attack_i
 
             new_case[frame_id][attack_opts["victim_vehicle_id"]]["result_bboxes"] = pred_bboxes
             new_case[frame_id][attack_opts["victim_vehicle_id"]]["result_scores"] = pred_scores
-            print("Num of pred bboxes:", len(pred_bboxes))
+            print("Case {}: Num of pred bboxes: {}".format(case_id, len(pred_bboxes)))
             
             # Visualization
             dataset.load_feature(new_case, perception_feature)
