@@ -12,7 +12,7 @@ DATASET = "test"
 SCENARIO_ID = "2021_08_22_21_41_24"
 START_FRAME_IDS = [69, 89, 109, 129, 149, 169, 189]
 TARGET_VEHICLE_ID = 916
-REFERENCE_VEHICLE_ID = 886
+REFERENCE_VEHICLE_IDS = [886, 895, 904]
 OUTPUT_PATH = "positions_output.pkl"
 # =========================
 
@@ -55,7 +55,8 @@ def angle_wrap_pi(a: float) -> float:
 
 def rotation_matrix(roll: float, yaw: float, pitch: float) -> np.ndarray:
     """
-    Matches the rotation used in the codebase.
+    Matches the rotation used in your codebase:
+    R = Rz(yaw) * Rx(roll) * Ry(pitch) with that specific layout.
     """
     cr, sr = math.cos(roll),  math.sin(roll)
     cy, sy = math.cos(yaw),   math.sin(yaw)
@@ -92,27 +93,21 @@ def map_bbox_to_sensor_bbox(bbox_map: np.ndarray, lidar_pose: List[float]) -> np
 
     return np.array([p_sensor[0], p_sensor[1], p_sensor[2], l, w, h, yaw_sensor], dtype=np.float32)
 
-def process_one_start(meta: Dict[str, Any], start_frame_id: int) -> Dict[str, Any]:
-    """
-    Returns a dict for a single start frame:
-    { "scenario_id", "start_frame_id", "target_vehicle_id", "reference_vehicle_id", "positions": (10,7) }
-    """
+def process_one(meta: Dict[str, Any], start_frame_id: int, reference_vehicle_id: int) -> Dict[str, Any]:
     label_frames = meta[SCENARIO_ID].get("label", {})
     data_frames  = meta[SCENARIO_ID].get("data",  {})
 
     # frames: start, start+2, ..., start+18 (10 frames)
     target_frames = [start_frame_id + 2 * i for i in range(10)]
 
-    # Output (10,7): bbox of TARGET in the attacker's (REFERENCE) sensor frame
     positions_sensor = np.full((10, 7), np.nan, dtype=np.float32)
 
     for i, frame_id in enumerate(target_frames):
         frame_rec = data_frames.get(frame_id, {})
-        rec_ref = frame_rec.get(REFERENCE_VEHICLE_ID, frame_rec.get(str(REFERENCE_VEHICLE_ID)))
+        rec_ref = frame_rec.get(reference_vehicle_id, frame_rec.get(str(reference_vehicle_id)))
         if not isinstance(rec_ref, dict):
-            # missing attacker record in data for this frame
             continue
-        # fetch lidar_pose from either calib or direct field
+
         calib_entry = rec_ref.get("calib", {})
         if isinstance(calib_entry, dict) and "lidar_pose" in calib_entry:
             lidar_pose = calib_entry["lidar_pose"]
@@ -124,25 +119,22 @@ def process_one_start(meta: Dict[str, Any], start_frame_id: int) -> Dict[str, An
         labels_frame = label_frames.get(frame_id)
         if labels_frame is None:
             continue
+
         try:
             label_target = get_label(labels_frame, TARGET_VEHICLE_ID)
-            tgt_map = label_to_abs_bbx7(label_target)  # [x,y,z,l,w,h,yaw] in global
-
-            tgt_in_attacker = map_bbox_to_sensor_bbox(tgt_map, lidar_pose)
-            positions_sensor[i, :] = tgt_in_attacker
-
+            tgt_map = label_to_abs_bbx7(label_target)            # [x,y,z,l,w,h,yaw] in global
+            tgt_in_ref_sensor = map_bbox_to_sensor_bbox(tgt_map, lidar_pose)
+            positions_sensor[i, :] = tgt_in_ref_sensor
         except KeyError:
-            # missing target label in this frame
             pass
 
-    out_obj = {
+    return {
         "scenario_id": SCENARIO_ID,
         "start_frame_id": start_frame_id,
         "target_vehicle_id": TARGET_VEHICLE_ID,
-        "reference_vehicle_id": REFERENCE_VEHICLE_ID,
+        "reference_vehicle_id": reference_vehicle_id,
         "positions": positions_sensor,  # shape (10,7)
     }
-    return out_obj
 
 def main():
     meta = load_meta(DATADIR, DATASET)
@@ -152,16 +144,20 @@ def main():
         raise KeyError(f"Scenario '{SCENARIO_ID}' not found. Examples: {sample_keys}")
 
     results: List[Dict[str, Any]] = []
-    for start in START_FRAME_IDS:
-        d = process_one_start(meta, start)
-        results.append(d)
-        print(f"Prepared entry for start={start} (frames {start}..{start+18} step2)")
 
-    # Save all dicts (list) into one pickle file
+    # Outer: start frames, Inner: reference vehicle ids
+    for start in START_FRAME_IDS:
+        for ref_id in REFERENCE_VEHICLE_IDS:
+            d = process_one(meta, start, ref_id)
+            results.append(d)
+            print(f"Prepared entry for start={start}, ref={ref_id} "
+                  f"(frames {start}..{start+18})")
+
+    # Save dictionaries into one pickle file (a list)
     with open(OUTPUT_PATH, "wb") as f:
         pickle.dump(results, f, protocol=pickle.HIGHEST_PROTOCOL)
 
-    print(f"Saved {len(results)} start-block(s) to: {OUTPUT_PATH}")
+    print(f"Saved {len(results)} entries to: {OUTPUT_PATH}")
 
 if __name__ == "__main__":
     main()

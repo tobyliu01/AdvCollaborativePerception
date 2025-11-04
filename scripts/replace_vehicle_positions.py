@@ -40,7 +40,7 @@ def main():
         positions       = new_block.get("positions", None)
 
         if scenario_id_new is None or start_frame_id is None or positions is None:
-            print("⚠️  Skipping invalid block (missing keys)")
+            print("Skipping invalid block (missing keys)")
             continue
 
         # --- Find matching attack entries ---
@@ -51,18 +51,18 @@ def main():
             attack_meta = entry.get("attack_meta", {})
             attack_opts = entry.get("attack_opts", {})
 
-            scen = attack_meta.get("scenario_id", None)
-            fids = attack_meta.get("frame_ids", [])
-            first_fid = fids[0] if isinstance(fids, (list, tuple)) and len(fids) > 0 else None
+            scenario = attack_meta.get("scenario_id", None)
+            frame_ids = attack_meta.get("frame_ids", [])
+            first_frame_id = frame_ids[0] if isinstance(frame_ids, (list, tuple)) and len(frame_ids) > 0 else None
 
             # Match by both scenario ID and first frame ID
-            if scen == scenario_id_new and first_fid == start_frame_id:
+            if scenario == scenario_id_new and first_frame_id == start_frame_id:
                 attack_opts["positions"] = positions
                 attack_meta["bboxes"] = positions
                 entry["attack_opts"] = attack_opts
                 entry["attack_meta"] = attack_meta
                 modified_count += 1
-                print(f"Updated scenario {scen}, start_frame {start_frame_id}")
+                print(f"Updated scenario {scenario}, start_frame {start_frame_id}")
 
     print(f"Total modified entries: {modified_count}")
 
