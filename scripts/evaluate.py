@@ -128,9 +128,9 @@ def attack_case_iterator(f):
     def wrapper(*args, **kwargs):
         attacker = args[0]
         for attack_id, attack in enumerate(attacker.attack_list):
-            data_dir = os.path.join(result_dir, "attack/{}/{:06d}".format(attacker.name, attack_id))
-            os.makedirs(data_dir, exist_ok=True)
             case_id = attack["attack_meta"]["case_id"]
+            data_dir = os.path.join(result_dir, "attack/{}/{:06d}".format(attacker.default_car_model, case_id))
+            os.makedirs(data_dir, exist_ok=True)
             case = dataset.get_case(case_id, tag="multi_frame", use_lidar=True, use_camera=False)
 
             kwargs.update({
@@ -164,16 +164,18 @@ def normal_perception(case_id=None, case=None, data_dir=None):
 
 @attack_case_iterator
 def attack_perception(attacker, case_id=None, case=None, data_dir=None, attack_id=None, attack=None):
+    attack_opts = attack["attack_opts"]
+    attack_opts["victim_vehicle_id"] = attack["attack_meta"]["victim_vehicle_id"]
+    attack_opts["frame_ids"] = [9]
+    attack["attack_meta"]["attack_frame_ids"] = [9]
+
+    data_dir = os.path.join(data_dir, str(attack_opts["victim_vehicle_id"]))
+    os.makedirs(data_dir, exist_ok=True)
     save_file = os.path.join(data_dir, "attack_info.pkl")
     if os.path.isfile(save_file):
         return
     else:
         logging.info("Processing attack {} and attack case {}".format(attacker.name, attack_id))
-
-    attack_opts = attack["attack_opts"]
-    attack_opts["victim_vehicle_id"] = attack["attack_meta"]["victim_vehicle_id"]
-    attack_opts["frame_ids"] = [9]
-    attack["attack_meta"]["attack_frame_ids"] = [9]
 
     if (isinstance(attacker, LidarSpoofEarlyAttacker) or isinstance(attacker, LidarRemoveEarlyAttacker)) and attacker.dense == 2 and attacker.sync == 1:
         # Need to attack all frames here as the data is used for online intermediate-fusion attack.
@@ -206,7 +208,7 @@ def attack_perception(attacker, case_id=None, case=None, data_dir=None, attack_i
 
             new_case[frame_id][attack_opts["victim_vehicle_id"]]["result_bboxes"] = pred_bboxes
             new_case[frame_id][attack_opts["victim_vehicle_id"]]["result_scores"] = pred_scores
-            print("Case {}: Num of pred bboxes: {}".format(case_id, len(pred_bboxes)))
+            print("Case {}: Vehicle {}: Num of pred bboxes: {}".format(case_id, attack_opts["victim_vehicle_id"],len(pred_bboxes)))
             
             # Visualization
             dataset.load_feature(new_case, perception_feature)
