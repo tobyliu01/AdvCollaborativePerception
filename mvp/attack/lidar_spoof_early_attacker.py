@@ -13,10 +13,9 @@ from mvp.tools.ray_tracing import get_model_mesh, ray_intersection
 
 
 class LidarSpoofEarlyAttacker(Attacker):
-    def __init__(self, dataset=None, dense=3, sync=1):
+    def __init__(self, dataset=None, dense=3, sync=1, default_car_model="car_0200", attack_dataset="lidar_spoof"):
         super().__init__()
-        # self.name = "lidar_spoof"
-        self.name = "lidar_spoof_self" # FOR MODIFIED VICTIM ID
+        self.name = attack_dataset
         self.dataset = dataset
         self.load_benchmark_meta()
         self.name = "lidar_spoof_early"
@@ -32,8 +31,7 @@ class LidarSpoofEarlyAttacker(Attacker):
         self.sync = sync
 
         # A 3D model as the fake car.
-        # self.default_car_model = "car_0200"
-        self.default_car_model = "three_boards"
+        self.default_car_model = default_car_model
         self.mesh = o3d.io.read_triangle_mesh(os.path.join(model_3d_path, "{}.ply".format(self.default_car_model)))
         # Divides the 3D model into 4 pieces.
         mesh_divide = pickle.load(open(os.path.join(model_3d_path, "spoof/mesh_divide.pkl"), "rb"))

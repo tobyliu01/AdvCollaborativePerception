@@ -39,6 +39,11 @@ logging.basicConfig(filename=os.path.join(result_dir, "evaluate.log"), filemode=
 
 dataset = OPV2VDataset(root_path=os.path.join(data_root, "OPV2V"), mode="test")
 
+# CHANGE THE MODEL NAME HERE
+default_spoof_model = "three_boards"
+# CHANGE THE ATTACK DATASET HERE
+attack_dataset = "lidar_spoof_new_dup1"
+
 perception_list = [
     OpencoodPerception(fusion_method="early", model_name="pointpillar"),
     # OpencoodPerception(fusion_method="intermediate", model_name="pointpillar"),
@@ -47,12 +52,12 @@ perception_list = [
 perception_dict = OrderedDict([(x.name, x) for x in perception_list])
 
 attacker_list = [
-    LidarSpoofEarlyAttacker(dataset, dense=0, sync=0),
-    # LidarSpoofEarlyAttacker(dataset, dense=1, sync=0),
-    # LidarSpoofEarlyAttacker(dataset, dense=2, sync=0),
-    # LidarSpoofEarlyAttacker(dataset, dense=2, sync=1),
-    # LidarSpoofEarlyAttacker(dataset, dense=3, sync=0),
-    # LidarSpoofEarlyAttacker(dataset, dense=3, sync=1),
+    LidarSpoofEarlyAttacker(dataset, dense=0, sync=0, default_car_model=default_spoof_model, attack_dataset=attack_dataset),
+    # LidarSpoofEarlyAttacker(dataset, dense=1, sync=0, default_car_model=default_spoof_model, attack_dataset=attack_dataset),
+    # LidarSpoofEarlyAttacker(dataset, dense=2, sync=0, default_car_model=default_spoof_model, attack_dataset=attack_dataset),
+    # LidarSpoofEarlyAttacker(dataset, dense=2, sync=1, default_car_model=default_spoof_model, attack_dataset=attack_dataset),
+    # LidarSpoofEarlyAttacker(dataset, dense=3, sync=0, default_car_model=default_spoof_model, attack_dataset=attack_dataset),
+    # LidarSpoofEarlyAttacker(dataset, dense=3, sync=1, default_car_model=default_spoof_model, attack_dataset=attack_dataset),
     # LidarRemoveEarlyAttacker(dataset, advshape=0, dense=0, sync=0),
     # LidarRemoveEarlyAttacker(dataset, advshape=0, dense=1, sync=0),
     # LidarRemoveEarlyAttacker(dataset, advshape=0, dense=2, sync=0),
@@ -129,7 +134,7 @@ def attack_case_iterator(f):
         attacker = args[0]
         for attack_id, attack in enumerate(attacker.attack_list):
             case_id = attack["attack_meta"]["case_id"]
-            data_dir = os.path.join(result_dir, "attack/{}/{:06d}".format(attacker.default_car_model, case_id))
+            data_dir = os.path.join(result_dir, "attack/{}/{:06d}".format(default_spoof_model, case_id))
             os.makedirs(data_dir, exist_ok=True)
             case = dataset.get_case(case_id, tag="multi_frame", use_lidar=True, use_camera=False)
 
