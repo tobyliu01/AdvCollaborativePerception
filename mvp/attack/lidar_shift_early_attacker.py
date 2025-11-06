@@ -14,9 +14,9 @@ from mvp.tools.polygon_space import bbox_to_polygon
 
 
 class LidarShiftEarlyAttacker(Attacker):
-    def __init__(self, perception=None, dataset=None, advshape=True, sample=True):
+    def __init__(self, perception=None, dataset=None, advshape=False, sample=False, default_car_model="car_0200", attack_dataset="lidar_spoof", object_id=None):
         super().__init__()
-        self.name = "lidar_shift"
+        self.name = attack_dataset
         self.dataset = dataset
         self.perception = perception
         self.load_benchmark_meta()
@@ -29,14 +29,15 @@ class LidarShiftEarlyAttacker(Attacker):
         self.advshape = advshape
         self.sample = sample
 
+        self.object_id = object_id
         # A 3D model as the fake car.
-        self.default_car_model = "car_0200"
+        self.default_car_model = default_car_model
         self.mesh = o3d.io.read_triangle_mesh(os.path.join(model_3d_path, "{}.ply".format(self.default_car_model)))
         # Divides the 3D model into 4 pieces.
         mesh_divide = pickle.load(open(os.path.join(model_3d_path, "spoof/mesh_divide.pkl"), "rb"))
         meshes = []
-        for vertex_indices in mesh_divide:
-            meshes.append(self.mesh.select_by_index(vertex_indices))
+        # for vertex_indices in mesh_divide:
+        #     meshes.append(self.mesh.select_by_index(vertex_indices))
         self.meshes = meshes
 
     def run(self, multi_frame_case, attack_opts):
@@ -70,6 +71,7 @@ class LidarShiftEarlyAttacker(Attacker):
         """
         new_case = copy.deepcopy(single_vehicle_case)
         attacker_pcd = new_case["lidar"]
+        attack_opts["object_id"] = self.object_id
         try:
             if "object_index" in attack_opts:
                 object_index = attack_opts["object_index"]
@@ -78,9 +80,9 @@ class LidarShiftEarlyAttacker(Attacker):
             bbox_to_remove = new_case["gt_bboxes"][object_index]
             bbox_to_remove[3:6] += 0.2
             bbox_to_spoof = np.copy(bbox_to_remove)
-            bbox_to_spoof[0] += np.cos(attack_opts["shift_direction"]) * attack_opts["shift_distance"]
-            bbox_to_spoof[1] += np.sin(attack_opts["shift_direction"]) * attack_opts["shift_distance"]
-            bbox_to_spoof[6] += attack_opts["rotation"]
+            # bbox_to_spoof[0] += np.cos(attack_opts["shift_direction"]) * attack_opts["shift_distance"]
+            # bbox_to_spoof[1] += np.sin(attack_opts["shift_direction"]) * attack_opts["shift_distance"]
+            # bbox_to_spoof[6] += attack_opts["rotation"]
         except:
             print("The target object is not available.")
             return new_case, {}

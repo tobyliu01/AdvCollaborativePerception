@@ -21,6 +21,7 @@ from mvp.visualize.attack import draw_attack
 from mvp.visualize.defense import visualize_defense, draw_roc
 from mvp.data.opv2v_dataset import OPV2VDataset
 from mvp.perception.opencood_perception import OpencoodPerception
+from mvp.attack.lidar_shift_early_attacker import LidarShiftEarlyAttacker
 from mvp.attack.lidar_spoof_early_attacker import LidarSpoofEarlyAttacker
 from mvp.attack.lidar_spoof_intermediate_attacker import LidarSpoofIntermediateAttacker
 from mvp.attack.lidar_spoof_late_attacker import LidarSpoofLateAttacker
@@ -43,6 +44,8 @@ dataset = OPV2VDataset(root_path=os.path.join(data_root, "OPV2V"), mode="test")
 default_spoof_model = "three_boards"
 # CHANGE THE ATTACK DATASET HERE
 attack_dataset = "lidar_spoof_new_dup1"
+# CHANGE THE REPLACED OBJECT ID
+object_id = 916
 
 perception_list = [
     OpencoodPerception(fusion_method="early", model_name="pointpillar"),
@@ -52,7 +55,8 @@ perception_list = [
 perception_dict = OrderedDict([(x.name, x) for x in perception_list])
 
 attacker_list = [
-    LidarSpoofEarlyAttacker(dataset, dense=0, sync=0, default_car_model=default_spoof_model, attack_dataset=attack_dataset),
+    LidarShiftEarlyAttacker(dataset=dataset, default_car_model=default_spoof_model, attack_dataset=attack_dataset, object_id=object_id)
+    # LidarSpoofEarlyAttacker(dataset, dense=0, sync=0, default_car_model=default_spoof_model, attack_dataset=attack_dataset),
     # LidarSpoofEarlyAttacker(dataset, dense=1, sync=0, default_car_model=default_spoof_model, attack_dataset=attack_dataset),
     # LidarSpoofEarlyAttacker(dataset, dense=2, sync=0, default_car_model=default_spoof_model, attack_dataset=attack_dataset),
     # LidarSpoofEarlyAttacker(dataset, dense=2, sync=1, default_car_model=default_spoof_model, attack_dataset=attack_dataset),
