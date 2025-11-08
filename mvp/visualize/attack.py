@@ -11,9 +11,9 @@ from mvp.visualize.lidar_3d_export import lidar_to_map_xyz, concat_xyz, save_asc
 from .general import draw_bbox_2d
 
 
-def draw_attack(attack, normal_case, attack_case, mode="multi_frame", show=False, save=None):
+def draw_attack(attack, normal_case, attack_case, current_frame_id, mode="multi_frame", show=False, save=None):
     if mode == "multi_frame":
-        frame_ids = attack["attack_meta"]["attack_frame_ids"]
+        frame_ids = [current_frame_id]
         frame_num = len(frame_ids)
         fig, axes = plt.subplots(frame_num, 2, figsize=(40, 20 * frame_num))
 

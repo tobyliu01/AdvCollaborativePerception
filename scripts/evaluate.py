@@ -33,7 +33,7 @@ from mvp.defense.perception_defender import PerceptionDefender
 result_dir = os.path.normpath(os.path.join(os.path.abspath(os.path.dirname(__file__)), "../result"))
 os.makedirs(result_dir, exist_ok=True)
 
-attack_frame_ids = [9]
+attack_frame_ids = [i for i in range(10)]
 total_frames = 10
 
 logging.basicConfig(filename=os.path.join(result_dir, "evaluate.log"), filemode="a", level=logging.INFO)
@@ -175,7 +175,7 @@ def normal_perception(case_id=None, case=None, data_dir=None):
 def attack_perception(attacker, case_id=None, case=None, data_dir=None, attack_id=None, attack=None):
     attack_opts = attack["attack_opts"]
     attack_opts["victim_vehicle_id"] = attack["attack_meta"]["victim_vehicle_id"]
-    attack_opts["frame_ids"] = [9]
+    attack_opts["frame_ids"] = [i for i in range(10)]
     attack["attack_meta"]["attack_frame_ids"] = [9]
 
     data_dir = os.path.join(data_dir, str(attack_opts["victim_vehicle_id"]))
@@ -203,25 +203,26 @@ def attack_perception(attacker, case_id=None, case=None, data_dir=None, attack_i
     new_case, attack_info = attacker.run(case, attack_opts)
     pickle_cache_dump(attack_info, save_file)
 
-    if isinstance(attacker, LidarSpoofEarlyAttacker) or isinstance(attacker, LidarRemoveEarlyAttacker):
+    if isinstance(attacker, LidarSpoofEarlyAttacker) or isinstance(attacker, LidarRemoveEarlyAttacker) or isinstance(attacker, LidarShiftEarlyAttacker):
         # Early-fusion attacks are block box attacks. We need to apply certain models to evaluate their performance.
         # for perception_name in ["pointpillar_early", "pointpillar_intermediate"]:
         for perception_name in ["pointpillar_early"]:
-            perception_save_file = os.path.join(data_dir, "{}.pkl".format(perception_name))
             perception = perception_dict[perception_name]
             perception_feature = [{} for _ in range(total_frames)]
             for frame_id in attack_frame_ids:
+                os.makedirs(os.path.join(data_dir, "frame{}".format(frame_id)), exist_ok=True)
                 pred_bboxes, pred_scores = perception.run(new_case[frame_id], ego_id=attack_opts["victim_vehicle_id"])
                 perception_feature[frame_id][attack_opts["victim_vehicle_id"]] = {"pred_bboxes": pred_bboxes, "pred_scores": pred_scores}
-            pickle_cache_dump(perception_feature, perception_save_file)
+                perception_save_file = os.path.join(data_dir, "frame{}".format(frame_id), "{}.pkl".format(perception_name))
+                pickle_cache_dump(perception_feature, perception_save_file)
 
-            new_case[frame_id][attack_opts["victim_vehicle_id"]]["result_bboxes"] = pred_bboxes
-            new_case[frame_id][attack_opts["victim_vehicle_id"]]["result_scores"] = pred_scores
-            print("Case {}: Vehicle {}: Num of pred bboxes: {}".format(case_id, attack_opts["victim_vehicle_id"],len(pred_bboxes)))
-            
-            # Visualization
-            dataset.load_feature(new_case, perception_feature)
-            draw_attack(attack, case, new_case, mode="multi_frame", show=False, save=os.path.join(data_dir, "{}.png".format(perception_name)))
+                new_case[frame_id][attack_opts["victim_vehicle_id"]]["result_bboxes"] = pred_bboxes
+                new_case[frame_id][attack_opts["victim_vehicle_id"]]["result_scores"] = pred_scores
+                print("Case {}, Frame {}, Vehicle {}: Num of pred bboxes: {}".format(case_id, frame_id, attack_opts["victim_vehicle_id"],len(pred_bboxes)))
+                
+                # Visualization
+                dataset.load_feature(new_case, perception_feature)
+                draw_attack(attack, case, new_case, current_frame_id=frame_id, mode="multi_frame", show=False, save=os.path.join(data_dir, "frame{}".format(frame_id), "{}.png".format(perception_name)))
     else:
         # Visualization
         dataset.load_feature(new_case, attack_info)
