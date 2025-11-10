@@ -5,6 +5,7 @@
 *.npy
 *.log
 *.out
+*.txt
 /data
 /models
 /result
