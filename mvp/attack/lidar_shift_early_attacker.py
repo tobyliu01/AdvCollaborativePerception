@@ -77,7 +77,7 @@ class LidarShiftEarlyAttacker(Attacker):
                 object_index = attack_opts["object_index"]
             elif "object_id" in attack_opts:
                 object_index = new_case["object_ids"].index(attack_opts["object_id"])
-            bbox_to_remove = new_case["gt_bboxes"][object_index]
+            bbox_to_remove = new_case["gt_bboxes"][object_index]  # Object's relative position to ego vehicle.
             bbox_to_remove[3:6] += 0.2
             bbox_to_spoof = np.copy(bbox_to_remove)
             # bbox_to_spoof[0] += np.cos(attack_opts["shift_direction"]) * attack_opts["shift_distance"]
