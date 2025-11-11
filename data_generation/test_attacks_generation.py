@@ -304,7 +304,9 @@ def generate_cases_for_spec(
     max_attempts = 50
     for chunk in chunks:
         frame_ids = list(chunk)
-        for _ in range(samples_per_case):
+        sampled_count = 0
+        chunk_failed = False
+        while sampled_count < samples_per_case:
             for attempt in range(max_attempts):
                 victim_vehicle_id = rng.choice(vehicle_ids)
                 object_id = select_object_id(labels, frame_ids, vehicle_ids, rng)
@@ -372,23 +374,67 @@ def generate_cases_for_spec(
                         attempt + 1,
                     )
                 )
-                if frame_counts and all(count >= MIN_POINTS_IN_BBOX for _, count in frame_counts):
-                    cases.append(
-                        {
-                            "case_id": case_id,
-                            "scenario_id": scenario_id,
-                            "frame_ids": frame_ids.copy(),
-                            "victim_vehicle_id": victim_vehicle_id,
-                            "object_id": object_id,
-                            "vehicle_ids": vehicle_ids.copy(),
-                        },
+                if not (frame_counts and all(count >= MIN_POINTS_IN_BBOX for _, count in frame_counts)):
+                    continue
+
+                # Filter 3: ensure at least one collaborator observes the object.
+                collaborator_ok = False
+                collab_details: List[str] = []
+                for collaborator_id in vehicle_ids:
+                    if collaborator_id == victim_vehicle_id:
+                        continue
+                    collab_counts = points_in_bbox_per_frame(
+                        datadir=datadir,
+                        scenario_meta=scenario_meta,
+                        labels=labels,
+                        frame_ids=frame_ids,
+                        victim_vehicle_id=collaborator_id,
+                        object_id=object_id,
+                        cache=pcd_cache,
                     )
-                    break
-            else:
-                raise RuntimeError(
-                    f"Failed to sample a valid victim/object pair for scenario {scenario_id}, "
-                    f"frames {frame_ids}, after {max_attempts} attempts.",
+                    min_collab_points = min((cnt for _, cnt in collab_counts), default=0)
+                    collab_details.append(f"{collaborator_id}:{min_collab_points}")
+                    if min_collab_points >= MIN_POINTS_IN_BBOX:
+                        collaborator_ok = True
+                        break
+                if not collaborator_ok:
+                    log_debug(
+                        "[DEBUG] scenario=%s frames=%s victim=%d object=%d details=%s collaborator_fail attempt=%d"
+                        % (
+                            scenario_id,
+                            frame_ids,
+                            victim_vehicle_id,
+                            object_id,
+                            ",".join(collab_details),
+                            attempt + 1,
+                        )
+                    )
+                    continue
+
+                # Append case if all requirements are satisfied.
+                cases.append(
+                    {
+                        "case_id": case_id,
+                        "scenario_id": scenario_id,
+                        "frame_ids": frame_ids.copy(),
+                        "victim_vehicle_id": victim_vehicle_id,
+                        "object_id": object_id,
+                        "vehicle_ids": vehicle_ids.copy(),
+                    },
                 )
+                sampled_count += 1
+                break
+            else:  # Failed to find a valid pair after max attempts, skip chunk.
+                msg = (
+                    f"[WARN] giving up on scenario={scenario_id} frame_chunk={frame_ids} "
+                    f"after {max_attempts} attempts."
+                )
+                print(msg)
+                log_debug(msg)
+                chunk_failed = True
+                break
+        if chunk_failed:
+            continue
         case_id += 1
     return cases, case_id
 
