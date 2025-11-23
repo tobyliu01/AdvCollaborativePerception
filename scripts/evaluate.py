@@ -30,7 +30,7 @@ from mvp.attack.lidar_remove_intermediate_attacker import LidarRemoveIntermediat
 from mvp.attack.lidar_remove_late_attacker import LidarRemoveLateAttacker
 from mvp.defense.perception_defender import PerceptionDefender
 
-result_dir = os.path.normpath(os.path.join(os.path.abspath(os.path.dirname(__file__)), "../result"))
+result_dir = os.path.normpath("/workspace/hdd/datasets/yutongl/AdvCollaborativePerception/result")
 os.makedirs(result_dir, exist_ok=True)
 
 attack_frame_ids = [i for i in range(10)]

@@ -2,8 +2,9 @@ import os
 import numpy as np
 
 mvp_root = os.path.join(os.path.abspath(os.path.dirname(__file__)), "../")
-data_root = os.path.join(mvp_root, "data")
-model_root = os.path.join(mvp_root, "models")
+external_storage_root = "/workspace/hdd/datasets/yutongl/AdvCollaborativePerception"
+data_root = os.path.join(external_storage_root, "data")
+model_root = os.path.join(external_storage_root, "models")
 third_party_root = os.path.join(mvp_root, "third_party")
 tmp_root = os.path.join(mvp_root, "tmp")
 model_3d_path = os.path.join(data_root, "model_3d")
