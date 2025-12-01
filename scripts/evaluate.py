@@ -1,11 +1,19 @@
+"""
+Evaluation result structure
+
+Current:
+result/attack/model_name/case_id/vehicle_id/frame_id & attack_info.pkl/
+
+Expected:
+result/attack/model_name/case_id/pair_id/vehicle_id/frame_id & attack_info.pkl/
+"""
+
 import os, sys
 root = os.path.join(os.path.abspath(os.path.dirname(__file__)), "../")
 sys.path.append(root)
 import pickle
 import logging
-import copy
 import numpy as np
-import traceback
 from collections import OrderedDict
 
 from mvp.config import data_root

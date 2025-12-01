@@ -10,7 +10,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Generate lidar spoof attack config from test_attacks_unique.pkl")
     parser.add_argument("--attacks", type=Path, default=Path("test_attacks_unique.pkl"), help="Source attacks PKL")
     parser.add_argument("--output", type=Path, default=Path("lidar_spoof.pkl"), help="Destination PKL")
-    parser.add_argument("--datadir", type=Path, default=Path("../data/OPV2V"), help="Dataset root containing split PKL files")
+    parser.add_argument("--datadir", type=Path, default=Path("/workspace/hdd/datasets/yutongl/AdvCollaborativePerception/data/OPV2V"), help="Dataset root containing split PKL files")
     parser.add_argument("--dataset", choices=["train", "validate", "test"], default="test", help="Dataset split to load")
     return parser.parse_args()
 
@@ -104,6 +104,7 @@ def generate_entries(cases, dataset_meta: Dict, dataset_split: str):
         victim_vehicle_id = case.get("victim_vehicle_id")
         object_id = case.get("object_id")
         case_id = case.get("case_id")
+        pair_id = case.get("pair_id")
         if frame_ids is None or object_id is None or victim_vehicle_id is None:
             continue
         for ego_vehicle_id in vehicle_ids:
@@ -118,6 +119,7 @@ def generate_entries(cases, dataset_meta: Dict, dataset_split: str):
             }
             attack_meta = {
                 "case_id": case_id,
+                "pair_id": pair_id,
                 "scenario_id": scenario_id,
                 "frame_ids": list(frame_ids),
                 "ego_vehicle_id": ego_vehicle_id,

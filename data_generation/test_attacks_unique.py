@@ -24,6 +24,12 @@ def deduplicate(cases):
             continue
         seen.add(key)
         unique.append(case)
+    pair_counts = {}
+    for case in unique:
+        case_id = case.get("case_id")
+        pair_id = pair_counts.get(case_id, 0)
+        case["pair_id"] = pair_id
+        pair_counts[case_id] = pair_id + 1
     return unique
 
 
