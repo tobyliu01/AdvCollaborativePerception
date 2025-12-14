@@ -14,7 +14,7 @@ from mvp.tools.polygon_space import bbox_to_polygon
 
 
 class LidarShiftEarlyAttacker(Attacker):
-    def __init__(self, perception=None, dataset=None, advshape=False, sample=False, default_car_model="car_0200", attack_dataset="lidar_spoof", object_id=None):
+    def __init__(self, perception=None, dataset=None, advshape=False, sample=False, default_car_model="car_0200", attack_dataset="lidar_spoof"):
         super().__init__()
         self.name = attack_dataset
         self.dataset = dataset
@@ -29,7 +29,6 @@ class LidarShiftEarlyAttacker(Attacker):
         self.advshape = advshape
         self.sample = sample
 
-        self.object_id = object_id
         # A 3D model as the fake car.
         self.default_car_model = default_car_model
         self.mesh = o3d.io.read_triangle_mesh(os.path.join(model_3d_path, "{}.ply".format(self.default_car_model)))
@@ -41,37 +40,36 @@ class LidarShiftEarlyAttacker(Attacker):
         self.meshes = meshes
 
     def run(self, multi_frame_case, attack_opts):
-        attacker_id = attack_opts["attacker_vehicle_id"]
+        ego_id = attack_opts["ego_vehicle_id"]
         attack_info = [{} for _ in range(len(multi_frame_case))]
         for frame_id in attack_opts["frame_ids"]:
-            single_vehicle_case = multi_frame_case[frame_id][attacker_id]
+            single_vehicle_case = multi_frame_case[frame_id][ego_id]
             lidar_poses = {vehicle_id: multi_frame_case[frame_id][vehicle_id]["lidar_pose"] for vehicle_id in multi_frame_case[frame_id]}
             benign_sensor_locations = []
             for vehicle_id, vehicle_data in multi_frame_case[frame_id].items():
-                if vehicle_id == attacker_id:
+                if vehicle_id == ego_id:
                     continue
                 benign_sensor_locations.append(
-                    pcd_map_to_sensor(vehicle_data["lidar_pose"][:3][np.newaxis, :], multi_frame_case[frame_id][attacker_id]["lidar_pose"])[0]
+                    pcd_map_to_sensor(vehicle_data["lidar_pose"][:3][np.newaxis, :], multi_frame_case[frame_id][ego_id]["lidar_pose"])[0]
                 )
             attack_opts["benign_sensor_locations"] = np.asarray(benign_sensor_locations)
             attack_opts["lidar_poses"] = lidar_poses
             new_case, info = self.run_core(single_vehicle_case, attack_opts)
-            attack_info[frame_id].update({attacker_id: info})
-            multi_frame_case[frame_id][attacker_id] = new_case
+            attack_info[frame_id].update({ego_id: info})
+            multi_frame_case[frame_id][ego_id] = new_case
         return multi_frame_case, attack_info
 
     def run_core(self, single_vehicle_case, attack_opts):
         """ attack_opts: {
                 "frame_ids": [-1],
-                "attacker_vehicle_id": int,
+                "ego_vehicle_id": int,
                 "object_id": int,
                 "shift_direction": float,
                 "shift_distance": float,
             }
         """
         new_case = copy.deepcopy(single_vehicle_case)
-        attacker_pcd = new_case["lidar"]
-        attack_opts["object_id"] = self.object_id
+        ego_pcd = new_case["lidar"]
         try:
             if "object_index" in attack_opts:
                 object_index = attack_opts["object_index"]
@@ -84,20 +82,20 @@ class LidarShiftEarlyAttacker(Attacker):
             # bbox_to_spoof[1] += np.sin(attack_opts["shift_direction"]) * attack_opts["shift_distance"]
             # bbox_to_spoof[6] += attack_opts["rotation"]
         except:
-            print("The target object is not available.")
+            print("Case {}, Pair {}, Ego vehicle {}, Object vehicle {}: The target object is not available.".format(attack_opts["case_id"], attack_opts["pair_id"], attack_opts["ego_vehicle_id"], attack_opts["object_id"]))
             return new_case, {}
 
         # Remove
-        points = attacker_pcd[:, :3]
+        points = ego_pcd[:, :3]
         distance = np.sum(points ** 2, axis=1) ** 0.5
         direction = points / np.tile(distance.reshape((-1, 1)), (1, 3))
-        point_indices = get_point_indices_in_bbox(bbox_to_remove, attacker_pcd[:,:3])
+        point_indices = get_point_indices_in_bbox(bbox_to_remove, ego_pcd[:,:3])
         rays = np.hstack([np.zeros((len(point_indices), 3)), direction[point_indices]])
         if rays.shape[0] == 0:
             print("The removed object is not visible.")
             return new_case, {}
 
-        plane_model, _ = get_ground_plane(attacker_pcd, method="ransac")
+        plane_model, _ = get_ground_plane(ego_pcd, method="ransac")
         ground_mesh = get_ground_mesh(plane_model)
         meshes = [ground_mesh]
         for i in range(new_case["gt_bboxes"].shape[0]):
@@ -115,19 +113,19 @@ class LidarShiftEarlyAttacker(Attacker):
 
         index_mask = (intersect_points[:,0] ** 2 < 10000)
         replace_indices = np.argwhere(index_mask > 0).reshape(-1)
-        attacker_pcd[point_indices[replace_indices],:3] = intersect_points[replace_indices]
+        ego_pcd[point_indices[replace_indices],:3] = intersect_points[replace_indices]
 
         in_range_mask = (np.sqrt(np.sum(intersect_points[:,:2] ** 2, axis=1)) <= 100).astype(bool)
         replace_indices = point_indices[in_range_mask]
         replace_data = intersect_points[in_range_mask]
-        attacker_pcd[replace_indices,:3] = replace_data
+        ego_pcd[replace_indices,:3] = replace_data
         ignore_indices = point_indices[np.logical_not(in_range_mask)]
-        remain_mask = np.ones(attacker_pcd.shape[0]).astype(bool)
+        remain_mask = np.ones(ego_pcd.shape[0]).astype(bool)
         remain_mask[ignore_indices] = False
-        attacker_pcd = attacker_pcd[remain_mask]
+        ego_pcd = ego_pcd[remain_mask]
 
         # Spoof
-        points = attacker_pcd[:, :3]
+        points = ego_pcd[:, :3]
         distance = np.sum(points ** 2, axis=1) ** 0.5
         direction = points / np.tile(distance.reshape((-1, 1)), (1, 3))
         rays = np.hstack([np.zeros((direction.shape[0], 3)), direction])
@@ -171,11 +169,11 @@ class LidarShiftEarlyAttacker(Attacker):
         else:
             car_mesh = get_model_mesh(self.default_car_model, bbox_to_spoof)
             intersect_points2 = ray_intersection([car_mesh], rays)
-            index_mask = (intersect_points2[:,0] ** 2 < 10000) * (attacker_pcd[:,0] / intersect_points2[:,0] > 1)
+            index_mask = (intersect_points2[:,0] ** 2 < 10000) * (ego_pcd[:,0] / intersect_points2[:,0] > 1)
             replace_indices2 = np.where(index_mask > 0)[0]
             replace_data2 = intersect_points2[replace_indices2]
 
-        attacker_pcd[replace_indices2,:3] = replace_data2
+        ego_pcd[replace_indices2,:3] = replace_data2
 
         # Handles advshape and their intersection points.
         if self.advshape:
@@ -193,9 +191,9 @@ class LidarShiftEarlyAttacker(Attacker):
             
             # NOTE: the advshape points are directly appended on the point cloud.
             append_data = advshape_data
-            tmp_pcd = np.vstack([attacker_pcd[:, :3], advshape_data])
+            tmp_pcd = np.vstack([ego_pcd[:, :3], advshape_data])
             tmp_pcd, _ = sort_lidar_points(tmp_pcd)
-            attacker_pcd = np.hstack([tmp_pcd, np.ones((tmp_pcd.shape[0], 1))])
+            ego_pcd = np.hstack([tmp_pcd, np.ones((tmp_pcd.shape[0], 1))])
         else:
             append_data = None
 
@@ -213,7 +211,7 @@ class LidarShiftEarlyAttacker(Attacker):
         final_replace_indices.sort()
         final_replace_data = final_replace_data[final_replace_indices]
 
-        new_case["lidar"] = attacker_pcd
+        new_case["lidar"] = ego_pcd
         info = {
             "ignore_indices": ignore_indices,
             "replace_indices": final_replace_indices,

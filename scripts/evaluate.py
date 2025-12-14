@@ -1,11 +1,12 @@
 """
-Evaluation result structure
-
-Current:
-result/attack/model_name/case_id/vehicle_id/frame_id & attack_info.pkl/
-
-Expected:
+Evaluation result structure:
 result/attack/model_name/case_id/pair_id/vehicle_id/frame_id & attack_info.pkl/
+
+If an NPC vehicle is totally invisible in a collaborator's LiDAR, then the NPC is not in the vehicle list of that collaborator.
+
+PIXOR:
+bev-preprocessor: numpy -> model -> bev-postprocessor: tensor (non-differentiable)
+opencood_perception.run() -> early_fusion_dataset.__getitem__() -> bev_preprocessor.preprocess() -> inference_utils.inference_early_fusion() -> pixor.forward() -> early_fusion_dataset.post_process() -> bev_postprocessor.post_process()
 """
 
 import os, sys
@@ -51,9 +52,7 @@ dataset = OPV2VDataset(root_path=os.path.join(data_root, "OPV2V"), mode="test")
 # CHANGE THE MODEL NAME HERE
 default_spoof_model = "three_boards"
 # CHANGE THE ATTACK DATASET HERE
-attack_dataset = "lidar_spoof_new_dup1"
-# CHANGE THE REPLACED OBJECT ID
-object_id = 916
+attack_dataset = "lidar_spoof"
 
 perception_list = [
     OpencoodPerception(fusion_method="early", model_name="pointpillar"),
@@ -63,7 +62,7 @@ perception_list = [
 perception_dict = OrderedDict([(x.name, x) for x in perception_list])
 
 attacker_list = [
-    LidarShiftEarlyAttacker(dataset=dataset, default_car_model=default_spoof_model, attack_dataset=attack_dataset, object_id=object_id)
+    LidarShiftEarlyAttacker(dataset=dataset, default_car_model=default_spoof_model, attack_dataset=attack_dataset)
     # LidarSpoofEarlyAttacker(dataset, dense=0, sync=0, default_car_model=default_spoof_model, attack_dataset=attack_dataset),
     # LidarSpoofEarlyAttacker(dataset, dense=1, sync=0, default_car_model=default_spoof_model, attack_dataset=attack_dataset),
     # LidarSpoofEarlyAttacker(dataset, dense=2, sync=0, default_car_model=default_spoof_model, attack_dataset=attack_dataset),
@@ -146,13 +145,15 @@ def attack_case_iterator(f):
         attacker = args[0]
         for attack_id, attack in enumerate(attacker.attack_list):
             case_id = attack["attack_meta"]["case_id"]
-            data_dir = os.path.join(result_dir, "attack/{}/{:06d}".format(default_spoof_model, case_id))
+            pair_id = attack["attack_meta"]["pair_id"]
+            data_dir = os.path.join(result_dir, "attack/{}/case{:06d}/pair{:02d}".format(default_spoof_model, case_id, pair_id))
             os.makedirs(data_dir, exist_ok=True)
             case = dataset.get_case(case_id, tag="multi_frame", use_lidar=True, use_camera=False)
 
             kwargs.update({
                 "case_id": case_id,
                 "case": case,
+                "pair_id": pair_id,
                 "data_dir": data_dir,
                 "attack_id": attack_id,
                 "attack": attack,
@@ -180,13 +181,13 @@ def normal_perception(case_id=None, case=None, data_dir=None):
         
 
 @attack_case_iterator
-def attack_perception(attacker, case_id=None, case=None, data_dir=None, attack_id=None, attack=None):
+def attack_perception(attacker, case_id=None, case=None, pair_id=None, data_dir=None, attack_id=None, attack=None):
     attack_opts = attack["attack_opts"]
-    attack_opts["victim_vehicle_id"] = attack["attack_meta"]["victim_vehicle_id"]
+    attack_opts["ego_vehicle_id"] = attack["attack_meta"]["ego_vehicle_id"]
     attack_opts["frame_ids"] = [i for i in range(10)]
     attack["attack_meta"]["attack_frame_ids"] = [9]
 
-    data_dir = os.path.join(data_dir, str(attack_opts["victim_vehicle_id"]))
+    data_dir = os.path.join(data_dir, str(attack_opts["ego_vehicle_id"]))
     os.makedirs(data_dir, exist_ok=True)
     save_file = os.path.join(data_dir, "attack_info.pkl")
     if os.path.isfile(save_file):
@@ -202,7 +203,7 @@ def attack_perception(attacker, case_id=None, case=None, data_dir=None, attack_i
         # Intermediate-fusion attacks need the result of ray casting.
         if attacker.init:
             attack_category = attacker.name.split('_')[1]
-            attack_opts["attack_info"] = pickle_cache_load(os.path.join(data_dir, "../../lidar_{}_early_AS_DenseAll_Async/{:06d}/attack_info.pkl".format(attack_category, attack_id)))
+            attack_opts["attack_info"] = pickle_cache_load(os.path.join(data_dir, "../../lidar_{}_early_AS_DenseAll_Async/{:04d}/attack_info.pkl".format(attack_category, attack_id)))
         else:
             attack_opts["attack_info"] = [{} for _ in range(10)]
         if attacker.online:
@@ -219,14 +220,14 @@ def attack_perception(attacker, case_id=None, case=None, data_dir=None, attack_i
             perception_feature = [{} for _ in range(total_frames)]
             for frame_id in attack_frame_ids:
                 os.makedirs(os.path.join(data_dir, "frame{}".format(frame_id)), exist_ok=True)
-                pred_bboxes, pred_scores = perception.run(new_case[frame_id], ego_id=attack_opts["victim_vehicle_id"])
-                perception_feature[frame_id][attack_opts["victim_vehicle_id"]] = {"pred_bboxes": pred_bboxes, "pred_scores": pred_scores}
+                pred_bboxes, pred_scores = perception.run(new_case[frame_id], ego_id=attack_opts["ego_vehicle_id"])
+                perception_feature[frame_id][attack_opts["ego_vehicle_id"]] = {"pred_bboxes": pred_bboxes, "pred_scores": pred_scores}
                 perception_save_file = os.path.join(data_dir, "frame{}".format(frame_id), "{}.pkl".format(perception_name))
                 pickle_cache_dump(perception_feature, perception_save_file)
 
-                new_case[frame_id][attack_opts["victim_vehicle_id"]]["result_bboxes"] = pred_bboxes
-                new_case[frame_id][attack_opts["victim_vehicle_id"]]["result_scores"] = pred_scores
-                print("Case {}, Frame {}, Vehicle {}: Num of pred bboxes: {}".format(case_id, frame_id, attack_opts["victim_vehicle_id"],len(pred_bboxes)))
+                new_case[frame_id][attack_opts["ego_vehicle_id"]]["result_bboxes"] = pred_bboxes
+                new_case[frame_id][attack_opts["ego_vehicle_id"]]["result_scores"] = pred_scores
+                print("Case {}, Pair {}, Frame {}, Vehicle {}: Num of pred bboxes: {}".format(case_id, pair_id, frame_id, attack_opts["ego_vehicle_id"],len(pred_bboxes)))
                 
                 # Visualization
                 dataset.load_feature(new_case, perception_feature)

@@ -76,7 +76,9 @@ def summarize_pkl(data):
         for line in data:
             # lines.append(str(line))
             lines.append(str(i) + ":")
-            lines.append(str(line.get("attack_opts")))
+            lines.append("attack_opts:")
+            lines.append(str(line.get("attack_opts"))+'\n')
+            lines.append("attack_meta:")
             lines.append(str(line.get("attack_meta")))
             lines.append("\n")
             i += 1

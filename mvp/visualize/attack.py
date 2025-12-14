@@ -18,18 +18,18 @@ def draw_attack(attack, normal_case, attack_case, current_frame_id, mode="multi_
         fig, axes = plt.subplots(frame_num, 2, figsize=(40, 20 * frame_num))
 
         # draw normal case first
-        for case_id, case in enumerate([normal_case, attack_case]):
+        for idx, case in enumerate([normal_case, attack_case]):
             for frame_id in frame_ids:
                 if frame_num <= 1:
-                    ax = axes[case_id]
+                    ax = axes[idx]
                 else:
-                    ax = axes[frame_ids.index(frame_id)][case_id]
+                    ax = axes[frame_ids.index(frame_id)][idx]
 
                 # save 3d point clouds
                 xyz_list = []
-                victim_vehicle_id = attack["attack_meta"]["victim_vehicle_id"]
-                victim_vehicle_data = case[frame_id][victim_vehicle_id]
-                xyz_map = lidar_to_map_xyz(victim_vehicle_data["lidar"], victim_vehicle_data["lidar_pose"])
+                ego_vehicle_id = attack["attack_meta"]["ego_vehicle_id"]
+                ego_vehicle_data = case[frame_id][ego_vehicle_id]
+                xyz_map = lidar_to_map_xyz(ego_vehicle_data["lidar"], ego_vehicle_data["lidar_pose"])
                 xyz_list.append(xyz_map)
                 # for vehicle_id, vehicle_data in case[frame_id].items():
                 #     xyz_map = lidar_to_map_xyz(vehicle_data["lidar"], vehicle_data["lidar_pose"])
@@ -47,24 +47,24 @@ def draw_attack(attack, normal_case, attack_case, current_frame_id, mode="multi_
                 # ax.set_aspect('equal', adjustable='box')
                 ax.scatter(pointcloud_all[:,0], pointcloud_all[:,1], s=0.01, c="black")
 
-                # label the location of attacker and victim
-                attacker_vehicle_id = attack["attack_meta"]["attacker_vehicle_id"]
-                attacker_vehicle_data = case[frame_id][attacker_vehicle_id]
-                ax.scatter(*victim_vehicle_data["lidar_pose"][:2].tolist(), s=100, c="green")
-                ax.scatter(*attacker_vehicle_data["lidar_pose"][:2].tolist(), s=100, c="red")
+                # label the location of victim and ego
+                victim_vehicle_id = attack["attack_meta"]["victim_vehicle_id"]
+                victim_vehicle_data = case[frame_id][victim_vehicle_id]
+                ax.scatter(*ego_vehicle_data["lidar_pose"][:2].tolist(), s=100, c="green")
+                ax.scatter(*victim_vehicle_data["lidar_pose"][:2].tolist(), s=100, c="red")
 
                 # draw gt/result bboxes
                 total_bboxes = []
-                if "gt_bboxes" in victim_vehicle_data:
-                    total_bboxes.append((bbox_sensor_to_map(victim_vehicle_data["gt_bboxes"], victim_vehicle_data["lidar_pose"]), victim_vehicle_data["object_ids"], "g"))
-                if "result_bboxes" in victim_vehicle_data:
-                    total_bboxes.append((bbox_sensor_to_map(victim_vehicle_data["result_bboxes"], victim_vehicle_data["lidar_pose"]), None, "b"))
+                if "gt_bboxes" in ego_vehicle_data:
+                    total_bboxes.append((bbox_sensor_to_map(ego_vehicle_data["gt_bboxes"], ego_vehicle_data["lidar_pose"]), ego_vehicle_data["object_ids"], "g"))
+                if "result_bboxes" in ego_vehicle_data:
+                    total_bboxes.append((bbox_sensor_to_map(ego_vehicle_data["result_bboxes"], ego_vehicle_data["lidar_pose"]), None, "b"))
                 
-                # label the position of spoofing/removal only in normal case
-                if case_id == 0:
+                # label the position of replacement only in normal case
+                if idx == 0:
                     # bbox = attack["attack_meta"]["bboxes"][frame_ids.index(frame_id)]
                     bbox = attack["attack_meta"]["bboxes"][frame_id]
-                    bbox = bbox_sensor_to_map(bbox, attacker_vehicle_data["lidar_pose"])
+                    bbox = bbox_sensor_to_map(bbox, ego_vehicle_data["lidar_pose"])
                     total_bboxes.append((bbox[None,:], None, 'red'))
 
                 draw_bbox_2d(ax, total_bboxes)
