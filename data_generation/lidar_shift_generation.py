@@ -9,7 +9,7 @@ import numpy as np
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Generate lidar spoof attack config from test_attacks_unique.pkl")
     parser.add_argument("--attacks", type=Path, default=Path("test_attacks_unique.pkl"), help="Source attacks PKL")
-    parser.add_argument("--output", type=Path, default=Path("lidar_spoof.pkl"), help="Destination PKL")
+    parser.add_argument("--output", type=Path, default=Path("lidar_shift.pkl"), help="Destination PKL")
     parser.add_argument("--datadir", type=Path, default=Path("/workspace/hdd/datasets/yutongl/AdvCollaborativePerception/data/OPV2V"), help="Dataset root containing split PKL files")
     parser.add_argument("--dataset", choices=["train", "validate", "test"], default="test", help="Dataset split to load")
     return parser.parse_args()
@@ -112,6 +112,8 @@ def generate_entries(cases, dataset_meta: Dict, dataset_split: str):
             if rel_bboxes is None:
                 continue
             attack_opts = {
+                "case_id": case_id,
+                "pair_id": pair_id,
                 "frame_ids": fixed_frames,
                 "ego_vehicle_id": ego_vehicle_id,
                 "victim_vehicle_id": victim_vehicle_id,

@@ -97,7 +97,7 @@ def save_summary(text, output_path):
     print(f"Summary saved to: {output_path}")
 
 def main():
-    pkl_path = "./test_attacks_unique.pkl"
+    pkl_path = "./test_attacks_short.pkl"
 
     # Load PKL
     data = load_pkl_file(pkl_path)
