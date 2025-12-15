@@ -54,12 +54,12 @@ class LidarShiftEarlyAttacker(Attacker):
                 )
             attack_opts["benign_sensor_locations"] = np.asarray(benign_sensor_locations)
             attack_opts["lidar_poses"] = lidar_poses
-            new_case, info = self.run_core(single_vehicle_case, attack_opts)
+            new_case, info = self.run_core(single_vehicle_case, attack_opts, frame_id)
             attack_info[frame_id].update({ego_id: info})
             multi_frame_case[frame_id][ego_id] = new_case
         return multi_frame_case, attack_info
 
-    def run_core(self, single_vehicle_case, attack_opts):
+    def run_core(self, single_vehicle_case, attack_opts, frame_id):
         """ attack_opts: {
                 "frame_ids": [-1],
                 "ego_vehicle_id": int,
@@ -82,7 +82,7 @@ class LidarShiftEarlyAttacker(Attacker):
             # bbox_to_spoof[1] += np.sin(attack_opts["shift_direction"]) * attack_opts["shift_distance"]
             # bbox_to_spoof[6] += attack_opts["rotation"]
         except:
-            print("Case {}, Pair {}, Ego vehicle {}, Object vehicle {}: The target object is not available.".format(attack_opts["case_id"], attack_opts["pair_id"], attack_opts["ego_vehicle_id"], attack_opts["object_id"]))
+            print("Case {}, Pair {}, Frame {}, Ego vehicle {}, Object vehicle {}: The target object is not available.".format(attack_opts["case_id"], attack_opts["pair_id"], frame_id, attack_opts["ego_vehicle_id"], attack_opts["object_id"]))
             return new_case, {}
 
         # Remove
@@ -108,7 +108,7 @@ class LidarShiftEarlyAttacker(Attacker):
         
         intersect_points = ray_intersection(meshes, rays)
         if intersect_points.shape[0] == 0:
-            print("Ray tracing failed.")
+            print("Case {}, Pair {}, Frame {}, Ego vehicle {}, Object vehicle {}: Ray tracing failed.".format(attack_opts["case_id"], attack_opts["pair_id"], frame_id, attack_opts["ego_vehicle_id"], attack_opts["object_id"]))
             return new_case, {}
 
         index_mask = (intersect_points[:,0] ** 2 < 10000)

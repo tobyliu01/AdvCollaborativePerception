@@ -7,6 +7,13 @@ If an NPC vehicle is totally invisible in a collaborator's LiDAR, then the NPC i
 PIXOR:
 bev-preprocessor: numpy -> model -> bev-postprocessor: tensor (non-differentiable)
 opencood_perception.run() -> early_fusion_dataset.__getitem__() -> bev_preprocessor.preprocess() -> inference_utils.inference_early_fusion() -> pixor.forward() -> early_fusion_dataset.post_process() -> bev_postprocessor.post_process()
+
+5 invalid frames
+Case 1, Pair 2, Frame 5, Ego vehicle 886, Object vehicle 927: The target object is not available.
+Case 1, Pair 2, Frame 6, Ego vehicle 886, Object vehicle 927: The target object is not available.
+Case 1, Pair 2, Frame 7, Ego vehicle 886, Object vehicle 927: The target object is not available.
+Case 1, Pair 2, Frame 8, Ego vehicle 886, Object vehicle 927: The target object is not available.
+Case 1, Pair 2, Frame 9, Ego vehicle 886, Object vehicle 927: The target object is not available.
 """
 
 import os, sys
@@ -45,7 +52,7 @@ os.makedirs(result_dir, exist_ok=True)
 
 attack_frame_ids = [i for i in range(10)]
 total_frames = 10
-success_threshold = 8
+success_rate_threshold = 0.8
 
 logging.basicConfig(filename=os.path.join(result_dir, "evaluate.log"), filemode="a", level=logging.INFO)
 
@@ -244,6 +251,7 @@ def attack_evaluation(attacker, perception_name):
     logging.info("Evaluating attack {} at perception {}".format(attacker.name, perception_name))
     case_number = len(attacker.attack_list)
     success_log = np.zeros((case_number, total_frames)).astype(bool)
+    valid_log = np.ones((case_number, total_frames)).astype(bool)
     max_iou = np.zeros((case_number, total_frames, 2)).astype(np.float32)
     best_score = np.zeros((case_number, total_frames, 2)).astype(np.float32)
 
@@ -274,10 +282,18 @@ def attack_evaluation(attacker, perception_name):
         # else:
             # feature_data = pickle_cache_load(os.path.join(data_dir, "attack_info.pkl"))
         feature_data_path = os.path.join(data_dir, str(ego_id))
+        attack_info = pickle_cache_load(os.path.join(feature_data_path, "attack_info.pkl"))
         
         # Calculate success rate by frames
         print(f"[INFO] Case {case_id}, Pair {pair_id}, Vehicle {ego_id}.")
         for frame_id in attack_frame_ids:
+            frame_attack_info = attack_info[frame_id].get(ego_id, {})
+            if not frame_attack_info:
+                # Attack not applied in this frame; exclude it from metrics.
+                valid_log[attack_id][frame_id] = False
+                print(f"[INVALID] Frame {frame_id} is invalid.")
+                continue
+
             attack_bbox = bbox_sensor_to_map(attack["attack_meta"]["bboxes"][frame_id], case[frame_id][attacker_id]["lidar_pose"])
             attack_bbox = bbox_map_to_sensor(attack_bbox, case[frame_id][ego_id]["lidar_pose"])
 
@@ -316,12 +332,15 @@ def attack_evaluation(attacker, perception_name):
         for idx in attack_indices:
             ego_id = attacker.attack_list[idx]["attack_meta"]["ego_vehicle_id"]
             victim_id = attacker.attack_list[idx]["attack_meta"]["victim_vehicle_id"]
-            frames_succeeded = int(np.sum(success_log[idx]))
-            ego_success = frames_succeeded >= success_threshold
+            frames_succeeded = int(np.sum(success_log[idx] & valid_log[idx]))
+            valid_frames = int(np.sum(valid_log[idx]))
+            ego_success = (float(frames_succeeded / valid_frames) >= success_rate_threshold) if valid_frames > 0 else True
             ego_success_details.append({
                 "ego_id": ego_id,
                 "is_victim": bool(ego_id==victim_id),
                 "successful_frames_number": frames_succeeded,
+                "valid_frames_number": valid_frames,
+                "success rate": float(frames_succeeded / valid_frames) if valid_frames > 0 else 1.0,
                 "ego_success": ego_success,
             })
         combo_success = all(item["ego_success"] for item in ego_success_details)
@@ -341,8 +360,9 @@ def attack_evaluation(attacker, perception_name):
         ego_id = attack["attack_meta"]["ego_vehicle_id"]
         victim_id = attack["attack_meta"]["victim_vehicle_id"]
         is_victim = ego_id == victim_id
-        frames_succeeded = int(np.sum(success_log[idx]))
-        ego_success = frames_succeeded >= success_threshold
+        frames_succeeded = int(np.sum(success_log[idx] & valid_log[idx]))
+        valid_frames = int(np.sum(valid_log[idx]))
+        ego_success = (float(frames_succeeded / valid_frames) >= success_rate_threshold) if valid_frames > 0 else True
         if is_victim:
             victim_total_ego += 1
             victim_success_ego += int(ego_success)
@@ -357,6 +377,7 @@ def attack_evaluation(attacker, perception_name):
     #                   os.path.join(save_dir, "attack_result_{}_{}.pkl".format(attacker.name, perception_name)))
     evaluation_results = {
         "success": success_log.tolist(),
+        "valid": valid_log.tolist(),
         "combination_results": combination_results,
         "combination_total": combination_total,
         "combination_success_count": combination_success_count,
@@ -372,8 +393,12 @@ def attack_evaluation(attacker, perception_name):
     with open(save_path, "w") as f:
         json.dump(evaluation_results, f, indent=2)
 
-    logging.info("Evaluation of attack {} at perception {}, total cases {}, total frames {}, success frames {:.2f}, success rate {:.2f}, average IoU {:.2f}, average score {:.2f},".format(
-        attacker.name, perception_name, success_log.shape[0], success_log.shape[0]*total_frames, np.sum(success_log > 0), np.mean(success_log), np.mean(max_iou[:, 1]), np.mean(best_score[:, 1])))
+    valid_frames_total = int(np.sum(valid_log))
+    success_frames_total = int(np.sum(success_log & valid_log))
+    frame_success_rate = success_frames_total / valid_frames_total if valid_frames_total > 0 else 0.0
+
+    logging.info("Evaluation of attack {} at perception {}, total cases {}, total valid frames {}, success frames {}, success rate {:.2f}, average IoU {:.2f}, average score {:.2f},".format(
+        attacker.name, perception_name, success_log.shape[0], valid_frames_total, success_frames_total, frame_success_rate, np.mean(max_iou[:, 1]), np.mean(best_score[:, 1])))
     logging.info("Combination (case, pair): total {}, success {}, success rate {:.2f}".format(
         combination_total, combination_success_count, combination_success_rate))
     logging.info("Victim and non-victim success: victim {}/{} ({:.2f}), non-victim {}/{} ({:.2f})".format(
