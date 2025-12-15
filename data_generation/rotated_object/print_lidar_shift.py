@@ -95,7 +95,7 @@ def save_summary(text, output_path):
     print(f"Summary saved to: {output_path}")
 
 def main():
-    pkl_path = "./lidar_shift_short.pkl"
+    pkl_path = "./lidar_shift.pkl"
 
     # Load PKL
     data = load_pkl_file(pkl_path)

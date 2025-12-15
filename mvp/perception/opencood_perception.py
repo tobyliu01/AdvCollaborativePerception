@@ -77,6 +77,9 @@ class OpencoodPerception(Perception):
                 self.inference_processors[self.fusion_method](batch_data,
                                                               self.model,
                                                               self.dataset)
+            if pred_box_tensor is None or pred_score is None:
+                return np.empty((0, 7), dtype=float), np.empty((0,), dtype=float)
+            
         pred_bboxes = pred_box_tensor.cpu().numpy()
         pred_bboxes = box_utils.corner_to_center(pred_bboxes, order="lwh")
         pred_bboxes[:,2] -= 0.5 * pred_bboxes[:,5]
@@ -496,6 +499,9 @@ class OpencoodPerception(Perception):
 
         # loop over all CAVs to process information
         for cav_id, selected_cav_base in base_data_dict.items():
+            if cav_id != ego_id:
+                continue
+
             # check if the cav is within the communication range with ego
             distance = \
                 math.sqrt((selected_cav_base['params']['lidar_pose'][0] -

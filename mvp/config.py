@@ -22,6 +22,7 @@ model_3d_examples = {
     "car_015": np.array([0,0,0,4.30,1.91,1.26,0]),
     "car_020": np.array([0,0,0,4.30,1.91,1.26,0]),
     "car_low_poly": np.array([0,0,0,4.30,1.91,1.26,0]),
+    "no_wheel": np.array([0,0,0,4.30,1.91,1.26,0]),
 }
 
 class_id_map = {

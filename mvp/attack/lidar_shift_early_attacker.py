@@ -77,10 +77,12 @@ class LidarShiftEarlyAttacker(Attacker):
                 object_index = new_case["object_ids"].index(attack_opts["object_id"])
             bbox_to_remove = new_case["gt_bboxes"][object_index]  # Object's relative position to ego vehicle.
             bbox_to_remove[3:6] += 0.2
-            bbox_to_spoof = np.copy(bbox_to_remove)
+            # bbox_to_spoof = np.copy(bbox_to_remove)
             # bbox_to_spoof[0] += np.cos(attack_opts["shift_direction"]) * attack_opts["shift_distance"]
             # bbox_to_spoof[1] += np.sin(attack_opts["shift_direction"]) * attack_opts["shift_distance"]
             # bbox_to_spoof[6] += attack_opts["rotation"]
+            bbox_to_spoof = attack_opts["bboxes"][frame_id]
+            bbox_to_spoof[3:6] += 0.2
         except:
             print("Case {}, Pair {}, Frame {}, Ego vehicle {}, Object vehicle {}: The target object is not available.".format(attack_opts["case_id"], attack_opts["pair_id"], frame_id, attack_opts["ego_vehicle_id"], attack_opts["object_id"]))
             return new_case, {}
@@ -92,7 +94,7 @@ class LidarShiftEarlyAttacker(Attacker):
         point_indices = get_point_indices_in_bbox(bbox_to_remove, ego_pcd[:,:3])
         rays = np.hstack([np.zeros((len(point_indices), 3)), direction[point_indices]])
         if rays.shape[0] == 0:
-            print("The removed object is not visible.")
+            print("Case {}, Pair {}, Frame {}, Ego vehicle {}, Object vehicle {}: The removed object is not visible.".format(attack_opts["case_id"], attack_opts["pair_id"], frame_id, attack_opts["ego_vehicle_id"], attack_opts["object_id"]))
             return new_case, {}
 
         plane_model, _ = get_ground_plane(ego_pcd, method="ransac")

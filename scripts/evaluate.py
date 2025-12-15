@@ -7,13 +7,6 @@ If an NPC vehicle is totally invisible in a collaborator's LiDAR, then the NPC i
 PIXOR:
 bev-preprocessor: numpy -> model -> bev-postprocessor: tensor (non-differentiable)
 opencood_perception.run() -> early_fusion_dataset.__getitem__() -> bev_preprocessor.preprocess() -> inference_utils.inference_early_fusion() -> pixor.forward() -> early_fusion_dataset.post_process() -> bev_postprocessor.post_process()
-
-5 invalid frames
-Case 1, Pair 2, Frame 5, Ego vehicle 886, Object vehicle 927: The target object is not available.
-Case 1, Pair 2, Frame 6, Ego vehicle 886, Object vehicle 927: The target object is not available.
-Case 1, Pair 2, Frame 7, Ego vehicle 886, Object vehicle 927: The target object is not available.
-Case 1, Pair 2, Frame 8, Ego vehicle 886, Object vehicle 927: The target object is not available.
-Case 1, Pair 2, Frame 9, Ego vehicle 886, Object vehicle 927: The target object is not available.
 """
 
 import os, sys
@@ -61,7 +54,7 @@ dataset = OPV2VDataset(root_path=os.path.join(data_root, "OPV2V"), mode="test")
 # CHANGE THE MODEL NAME HERE
 default_spoof_model = "three_boards"
 # CHANGE THE ATTACK DATASET HERE
-attack_dataset = "lidar_shift_short"
+attack_dataset = "lidar_shift"
 
 perception_list = [
     OpencoodPerception(fusion_method="early", model_name="pointpillar"),
@@ -289,7 +282,7 @@ def attack_evaluation(attacker, perception_name):
         for frame_id in attack_frame_ids:
             frame_attack_info = attack_info[frame_id].get(ego_id, {})
             if not frame_attack_info:
-                # Attack not applied in this frame; exclude it from metrics.
+                # Attack not applied in this frame. Exclude it from metrics.
                 valid_log[attack_id][frame_id] = False
                 print(f"[INVALID] Frame {frame_id} is invalid.")
                 continue
@@ -300,6 +293,11 @@ def attack_evaluation(attacker, perception_name):
             feature_data = pickle_cache_load(os.path.join(feature_data_path, f"frame{frame_id}", "{}.pkl".format(perception_name)))
             pred_bboxes = feature_data[frame_id][ego_id]["pred_bboxes"]
             pred_scores = feature_data[frame_id][ego_id]["pred_scores"]
+            if pred_bboxes is None or len(pred_bboxes) == 0:
+                # Prediction is not available in this frame. Exclude it from metrics.
+                valid_log[attack_id][frame_id] = False
+                print(f"[INVALID] Frame {frame_id} has no predicted bboxes.")
+                continue
             for j, pred_bbox in enumerate(pred_bboxes):
                 iou = iou3d(pred_bbox, attack_bbox)
                 if iou > max_iou[attack_id, frame_id, 1]:
@@ -311,10 +309,10 @@ def attack_evaluation(attacker, perception_name):
             elif attacker.name.startswith("lidar_remove") and max_iou[attack_id, frame_id, 1] == 0:
                 success_log[attack_id][frame_id] = True
             elif attacker.name.startswith("lidar_shift"):
-                if ego_id == victim_id and max_iou[attack_id, frame_id, 1] == 0:
+                if ego_id == victim_id and max_iou[attack_id, frame_id, 1] < 0.5:
                     success_log[attack_id][frame_id] = True
                     print(f"[Victim] Frame {frame_id} successful!")
-                elif ego_id != victim_id and max_iou[attack_id, frame_id, 1] > 0:
+                elif ego_id != victim_id and max_iou[attack_id, frame_id, 1] >= 0.5:
                     success_log[attack_id][frame_id] = True
                     print(f"[Non-Victim] Frame {frame_id} successful!")
 
@@ -595,7 +593,7 @@ def main():
     # Launch all attacks.
     logging.info("######################## Launching attacks ########################")
     for attacker_name, attacker in attacker_dict.items():
-        # attack_perception(attacker)
+        attack_perception(attacker)
         if "early" in attacker_name:
             print("######################## Run evaluation ########################")
             # for perception_name in ["pointpillar_early", "pointpillar_intermediate"]:

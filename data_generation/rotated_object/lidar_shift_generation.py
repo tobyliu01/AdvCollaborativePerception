@@ -8,8 +8,8 @@ import numpy as np
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Generate lidar spoof attack config from test_attacks_unique.pkl")
-    parser.add_argument("--attacks", type=Path, default=Path("test_attacks_short.pkl"), help="Source attacks PKL")
-    parser.add_argument("--output", type=Path, default=Path("lidar_shift_short.pkl"), help="Destination PKL")
+    parser.add_argument("--attacks", type=Path, default=Path("test_attacks_unique.pkl"), help="Source attacks PKL")
+    parser.add_argument("--output", type=Path, default=Path("lidar_shift.pkl"), help="Destination PKL")
     parser.add_argument("--datadir", type=Path, default=Path("/workspace/hdd/datasets/yutongl/AdvCollaborativePerception/data/OPV2V"), help="Dataset root containing split PKL files")
     parser.add_argument("--dataset", choices=["train", "validate", "test"], default="test", help="Dataset split to load")
     return parser.parse_args()

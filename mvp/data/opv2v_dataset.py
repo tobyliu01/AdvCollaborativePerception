@@ -40,7 +40,6 @@ class OPV2VDataset(Dataset):
             with open(cases_path, 'wb') as f:
                 pickle.dump(self.cases, f)
 
-        # attacks_path = os.path.join(root_path, "{}_attacks.pkl".format(mode))
         attacks_path = os.path.join(root_path, "{}_attacks.pkl".format(mode)) # FOR MODIFIED VICTIM ID
         print("attack_path:", attacks_path)
         if os.path.exists(attacks_path):
@@ -148,10 +147,10 @@ class OPV2VDataset(Dataset):
         case_meta = self.cases[tag][idx]
         case = self.get_case_by_meta(case_meta, tag, use_lidar=use_lidar, use_camera=use_camera)
 
-        if use_lidar or use_camera:
-            if len(self.cache) >= self.cache_size:
-                self.cache.popitem(last=False)
-            self.cache[case_key] = case
+        # if use_lidar or use_camera:
+        #     if len(self.cache) >= self.cache_size:
+        #         self.cache.popitem(last=False)
+        #     self.cache[case_key] = case
 
         return case
     
@@ -194,7 +193,7 @@ class OPV2VDataset(Dataset):
                 "params": calib,
                 "loader": OPV2VDataset,
             }
-            print("Scenario {}, Vehicle {}, object_ids {}".format(case_meta["scenario_id"], case_meta["vehicle_id"], [object_id for object_id in calib["vehicles"]]))
+            # print("Scenario {}, Vehicle {}, object_ids {}".format(case_meta["scenario_id"], case_meta["vehicle_id"], [object_id for object_id in calib["vehicles"]]))
 
         elif tag == "multi_vehicle":
             result = {}

@@ -38,9 +38,8 @@ def draw_attack(attack, normal_case, attack_case, current_frame_id, mode="multi_
                 out_path = os.path.splitext(save)[0] + ".ply"
                 save_ascii_ply_xyz(out_path, pointcloud_all)
                 
-                # draw point clouds
-                # pointcloud_all = pcd_sensor_to_map(case[frame_id][attack["attack_opts"]["attacker_vehicle_id"]]["lidar"], case[frame_id][attack["attack_opts"]["attacker_vehicle_id"]]["lidar_pose"])[:,:3]
-                pointcloud_all = np.vstack([pcd_sensor_to_map(vehicle_data["lidar"], vehicle_data["lidar_pose"])[:,:3] for vehicle_id, vehicle_data in case[frame_id].items()])
+                # pointcloud_all = np.vstack([pcd_sensor_to_map(vehicle_data["lidar"], vehicle_data["lidar_pose"])[:,:3] for vehicle_id, vehicle_data in case[frame_id].items()])  # Draw fused point cloud
+                pointcloud_all = pcd_sensor_to_map(ego_vehicle_data["lidar"], ego_vehicle_data["lidar_pose"])[:,:3]  # Draw ego point cloud
                 xlim, ylim = get_xylims(pointcloud_all)
                 ax.set_xlim(xlim)
                 ax.set_ylim(ylim)
