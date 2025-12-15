@@ -16,10 +16,11 @@ import pickle
 import logging
 import numpy as np
 from collections import OrderedDict
+import json
 
 from mvp.config import data_root
 from mvp.data.util import bbox_sensor_to_map, bbox_map_to_sensor, pcd_sensor_to_map, pcd_map_to_sensor, get_distance
-from mvp.tools.iou import iou3d
+from mvp.tools.iou import iou3d, iou2d
 from mvp.tools.polygon_space import bbox_to_polygon
 from mvp.tools.squeezeseg.interface import SqueezeSegInterface
 from mvp.defense.detection_util import filter_segmentation
@@ -44,6 +45,7 @@ os.makedirs(result_dir, exist_ok=True)
 
 attack_frame_ids = [i for i in range(10)]
 total_frames = 10
+success_threshold = 8
 
 logging.basicConfig(filename=os.path.join(result_dir, "evaluate.log"), filemode="a", level=logging.INFO)
 
@@ -52,7 +54,7 @@ dataset = OPV2VDataset(root_path=os.path.join(data_root, "OPV2V"), mode="test")
 # CHANGE THE MODEL NAME HERE
 default_spoof_model = "three_boards"
 # CHANGE THE ATTACK DATASET HERE
-attack_dataset = "lidar_spoof"
+attack_dataset = "lidar_shift_short"
 
 perception_list = [
     OpencoodPerception(fusion_method="early", model_name="pointpillar"),
@@ -241,56 +243,142 @@ def attack_perception(attacker, case_id=None, case=None, pair_id=None, data_dir=
 def attack_evaluation(attacker, perception_name):
     logging.info("Evaluating attack {} at perception {}".format(attacker.name, perception_name))
     case_number = len(attacker.attack_list)
-    success_log = np.zeros(case_number).astype(bool)
-    max_iou = np.zeros((case_number, 2)).astype(np.float32)
-    best_score = np.zeros((case_number, 2)).astype(np.float32)
+    success_log = np.zeros((case_number, total_frames)).astype(bool)
+    max_iou = np.zeros((case_number, total_frames, 2)).astype(np.float32)
+    best_score = np.zeros((case_number, total_frames, 2)).astype(np.float32)
 
     save_dir = os.path.join(result_dir, "evaluation")
     os.makedirs(save_dir, exist_ok=True)
 
     @attack_case_iterator
-    def attack_evaluation_processor(attacker, perception_name, case_id=None, case=None, data_dir=None, attack_id=None, attack=None):
-        ego_id = attack["attack_meta"]["victim_vehicle_id"]
-        attacker_id = attack["attack_meta"]["attacker_vehicle_id"]
-        case_id = attack["attack_meta"]["case_id"]
-        attack_bbox = bbox_sensor_to_map(attack["attack_meta"]["bbox"][-1], case[9][attacker_id]["lidar_pose"])
-        attack_bbox = bbox_map_to_sensor(attack_bbox, case[-1][ego_id]["lidar_pose"])
+    def attack_evaluation_processor(attacker, perception_name, case_id=None, case=None, pair_id=None, data_dir=None, attack_id=None, attack=None):
+        ego_id = attack["attack_meta"]["ego_vehicle_id"]
+        victim_id = attack["attack_meta"]["victim_vehicle_id"]
+        # attacker_id = attack["attack_meta"]["attacker_vehicle_id"]
+        attacker_id = ego_id
+        # attack_bbox = bbox_sensor_to_map(attack["attack_meta"]["bboxes"][-1], case[9][attacker_id]["lidar_pose"])
+        # attack_bbox = bbox_map_to_sensor(attack_bbox, case[-1][ego_id]["lidar_pose"])
 
-        feature_data = pickle_cache_load(os.path.join(result_dir, "normal/{:06d}/{}.pkl".format(case_id, perception_name)))
+        # feature_data = pickle_cache_load(os.path.join(result_dir, "normal/{:06d}/{}.pkl".format(case_id, perception_name)))
+
+        # pred_bboxes = feature_data[-1][ego_id]["pred_bboxes"]
+        # pred_scores = feature_data[-1][ego_id]["pred_scores"]
+        # for j, pred_bbox in enumerate(pred_bboxes):
+        #     iou = iou3d(pred_bbox, attack_bbox)
+        #     if iou > max_iou[attack_id, 0]:
+        #         max_iou[attack_id, 0] = iou
+        #         best_score[attack_id, 0] = pred_scores[j]
+
+        # if "early" in attacker.name:
+            # feature_data = pickle_cache_load(os.path.join(data_dir, str(ego_id), "{}.pkl".format(perception_name)))
+        # else:
+            # feature_data = pickle_cache_load(os.path.join(data_dir, "attack_info.pkl"))
+        feature_data_path = os.path.join(data_dir, str(ego_id))
         
-        pred_bboxes = feature_data[-1][ego_id]["pred_bboxes"]
-        pred_scores = feature_data[-1][ego_id]["pred_scores"]
-        for j, pred_bbox in enumerate(pred_bboxes):
-            iou = iou3d(pred_bbox, attack_bbox)
-            if iou > max_iou[attack_id, 0]:
-                max_iou[attack_id, 0] = iou
-                best_score[attack_id, 0] = pred_scores[j]
+        # Calculate success rate by frames
+        print(f"[INFO] Case {case_id}, Pair {pair_id}, Vehicle {ego_id}.")
+        for frame_id in attack_frame_ids:
+            attack_bbox = bbox_sensor_to_map(attack["attack_meta"]["bboxes"][frame_id], case[frame_id][attacker_id]["lidar_pose"])
+            attack_bbox = bbox_map_to_sensor(attack_bbox, case[frame_id][ego_id]["lidar_pose"])
 
-        if "early" in attacker.name:
-            feature_data = pickle_cache_load(os.path.join(data_dir, "{}.pkl".format(perception_name)))
-        else:
-            feature_data = pickle_cache_load(os.path.join(data_dir, "attack_info.pkl"))
+            feature_data = pickle_cache_load(os.path.join(feature_data_path, f"frame{frame_id}", "{}.pkl".format(perception_name)))
+            pred_bboxes = feature_data[frame_id][ego_id]["pred_bboxes"]
+            pred_scores = feature_data[frame_id][ego_id]["pred_scores"]
+            for j, pred_bbox in enumerate(pred_bboxes):
+                iou = iou3d(pred_bbox, attack_bbox)
+                if iou > max_iou[attack_id, frame_id, 1]:
+                    max_iou[attack_id, frame_id, 1] = iou
+                    best_score[attack_id, frame_id, 1] = pred_scores[j]
 
-        pred_bboxes = feature_data[-1][ego_id]["pred_bboxes"]
-        pred_scores = feature_data[-1][ego_id]["pred_scores"]
-        for j, pred_bbox in enumerate(pred_bboxes):
-            iou = iou3d(pred_bbox, attack_bbox)
-            if iou > max_iou[attack_id, 1]:
-                max_iou[attack_id, 1] = iou
-                best_score[attack_id, 1] = pred_scores[j]
-
-        if attacker.name.startswith("lidar_spoof") and max_iou[attack_id, 1] > 0:
-            success_log[attack_id] = True
-        if attacker.name.startswith("lidar_remove") and max_iou[attack_id, 1] == 0:
-            success_log[attack_id] = True
+            if attacker.name.startswith("lidar_spoof") and max_iou[attack_id, frame_id, 1] > 0:
+                success_log[attack_id][frame_id] = True
+            elif attacker.name.startswith("lidar_remove") and max_iou[attack_id, frame_id, 1] == 0:
+                success_log[attack_id][frame_id] = True
+            elif attacker.name.startswith("lidar_shift"):
+                if ego_id == victim_id and max_iou[attack_id, frame_id, 1] == 0:
+                    success_log[attack_id][frame_id] = True
+                    print(f"[Victim] Frame {frame_id} successful!")
+                elif ego_id != victim_id and max_iou[attack_id, frame_id, 1] > 0:
+                    success_log[attack_id][frame_id] = True
+                    print(f"[Non-Victim] Frame {frame_id} successful!")
 
     attack_evaluation_processor(attacker, perception_name)
 
-    pickle_cache_dump({"success": success_log, "iou": max_iou, "score": best_score},
-                      os.path.join(save_dir, "attack_result_{}_{}.pkl".format(attacker.name, perception_name)))
+    # Aggregate success rate by (case_id, pair_id) combinations
+    combination_index_map = {}
+    for idx, attack in enumerate(attacker.attack_list):
+        meta = attack["attack_meta"]
+        combination_key = (meta["case_id"], meta["pair_id"])
+        combination_index_map.setdefault(combination_key, []).append(idx)
+    combination_results = []
+    for (case_id, pair_id), attack_indices in combination_index_map.items():
+        ego_success_details = []
+        for idx in attack_indices:
+            ego_id = attacker.attack_list[idx]["attack_meta"]["ego_vehicle_id"]
+            victim_id = attacker.attack_list[idx]["attack_meta"]["victim_vehicle_id"]
+            frames_succeeded = int(np.sum(success_log[idx]))
+            ego_success = frames_succeeded >= success_threshold
+            ego_success_details.append({
+                "ego_id": ego_id,
+                "is_victim": bool(ego_id==victim_id),
+                "successful_frames_number": frames_succeeded,
+                "ego_success": ego_success,
+            })
+        combo_success = all(item["ego_success"] for item in ego_success_details)
+        combination_results.append({
+            "case_id": case_id,
+            "pair_id": pair_id,
+            "combination_success": combo_success,
+            "ego_details": ego_success_details,
+        })
+    combination_total = len(combination_results)
+    combination_success_count = sum(1 for item in combination_results if item["combination_success"])
+    combination_success_rate = combination_success_count / combination_total if combination_total > 0 else 0.0
 
-    logging.info("Evaluation of attack {} at perception {}, total case number {:.2f}, success number {:.2f}, success rate {:.2f}, average IoU {:.2f}, average score {:.2f},".format(
-        attacker.name, perception_name, success_log.shape[0], np.sum(success_log > 0), np.mean(success_log), np.mean(max_iou[:, 1]), np.mean(best_score[:, 1])))
+    # Calculate success rate by whether the ego vehicle is the victim.
+    victim_success_ego = victim_total_ego = non_victim_success_ego = non_victim_total_ego = 0
+    for idx, attack in enumerate(attacker.attack_list):
+        ego_id = attack["attack_meta"]["ego_vehicle_id"]
+        victim_id = attack["attack_meta"]["victim_vehicle_id"]
+        is_victim = ego_id == victim_id
+        frames_succeeded = int(np.sum(success_log[idx]))
+        ego_success = frames_succeeded >= success_threshold
+        if is_victim:
+            victim_total_ego += 1
+            victim_success_ego += int(ego_success)
+        else:
+            non_victim_total_ego += 1
+            non_victim_success_ego += int(ego_success)
+    victim_success_rate = victim_success_ego / victim_total_ego if victim_total_ego > 0 else 0.0
+    non_victim_success_rate = non_victim_success_ego / non_victim_total_ego if non_victim_total_ego > 0 else 0.0
+
+    # Save the evaluation results
+    # pickle_cache_dump({"success": success_log, "iou": max_iou, "score": best_score},
+    #                   os.path.join(save_dir, "attack_result_{}_{}.pkl".format(attacker.name, perception_name)))
+    evaluation_results = {
+        "success": success_log.tolist(),
+        "combination_results": combination_results,
+        "combination_total": combination_total,
+        "combination_success_count": combination_success_count,
+        "combination_success_rate": combination_success_rate,
+        "victim_success_ego": victim_success_ego,
+        "victim_total_ego": victim_total_ego,
+        "victim_success_rate": victim_success_rate,
+        "non_victim_success_ego": non_victim_success_ego,
+        "non_victim_total_ego": non_victim_total_ego,
+        "non_victim_success_rate": non_victim_success_rate,
+    }
+    save_path = os.path.join(save_dir, "attack_result_{}_{}.txt".format(attacker.name, perception_name))
+    with open(save_path, "w") as f:
+        json.dump(evaluation_results, f, indent=2)
+
+    logging.info("Evaluation of attack {} at perception {}, total cases {}, total frames {}, success frames {:.2f}, success rate {:.2f}, average IoU {:.2f}, average score {:.2f},".format(
+        attacker.name, perception_name, success_log.shape[0], success_log.shape[0]*total_frames, np.sum(success_log > 0), np.mean(success_log), np.mean(max_iou[:, 1]), np.mean(best_score[:, 1])))
+    logging.info("Combination (case, pair): total {}, success {}, success rate {:.2f}".format(
+        combination_total, combination_success_count, combination_success_rate))
+    logging.info("Victim and non-victim success: victim {}/{} ({:.2f}), non-victim {}/{} ({:.2f})".format(
+        victim_success_ego, victim_total_ego, victim_success_rate,
+        non_victim_success_ego, non_victim_total_ego, non_victim_success_rate))
 
 
 @normal_case_iterator
@@ -482,10 +570,12 @@ def main():
     # Launch all attacks.
     logging.info("######################## Launching attacks ########################")
     for attacker_name, attacker in attacker_dict.items():
-        attack_perception(attacker)
-        # if "early" in attacker_name:
-        #     for perception_name in ["pointpillar_early", "pointpillar_intermediate"]:
-        #         attack_evaluation(attacker, perception_name)
+        # attack_perception(attacker)
+        if "early" in attacker_name:
+            print("######################## Run evaluation ########################")
+            # for perception_name in ["pointpillar_early", "pointpillar_intermediate"]:
+            for perception_name in ["pointpillar_early"]:
+                attack_evaluation(attacker, perception_name)
         # else:
         #     attack_evaluation(attacker, attacker.perception.name)
     

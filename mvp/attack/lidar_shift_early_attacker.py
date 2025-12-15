@@ -14,7 +14,7 @@ from mvp.tools.polygon_space import bbox_to_polygon
 
 
 class LidarShiftEarlyAttacker(Attacker):
-    def __init__(self, perception=None, dataset=None, advshape=False, sample=False, default_car_model="car_0200", attack_dataset="lidar_spoof"):
+    def __init__(self, perception=None, dataset=None, advshape=False, sample=False, default_car_model="car_0200", attack_dataset="lidar_shift"):
         super().__init__()
         self.name = attack_dataset
         self.dataset = dataset

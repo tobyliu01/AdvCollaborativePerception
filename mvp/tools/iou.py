@@ -153,8 +153,13 @@ def iou3d(bbox1, bbox2):
 
 
 def iou2d(bbox1, bbox2):
-    bb1 = {'x1': bbox1[0], 'x2': bbox1[0] + bbox1[2], 'y1': bbox1[1], 'y2': bbox1[1] + bbox1[3]}
-    bb2 = {'x1': bbox2[0], 'x2': bbox2[0] + bbox2[2], 'y1': bbox2[1], 'y2': bbox2[1] + bbox2[3]}
+    x11, x12 = bbox1[0], bbox1[0] + bbox1[2]
+    y11, y12 = bbox1[1], bbox1[1] + bbox1[3]
+    x21, x22 = bbox2[0], bbox2[0] + bbox2[2]
+    y21, y22 = bbox2[1], bbox2[1] + bbox2[3]
+    bb1 = {'x1': min(x11, x12), 'x2': max(x11, x12), 'y1': min(y11, y12), 'y2': max(y11, y12)}
+    bb2 = {'x1': min(x21, x22), 'x2': max(x21, x22), 'y1': min(y21, y22), 'y2': max(y21, y22)}
+
     """
     Calculate the Intersection over Union (IoU) of two bounding boxes.
 
@@ -174,6 +179,7 @@ def iou2d(bbox1, bbox2):
     float
         in [0, 1]
     """
+    
     assert bb1['x1'] < bb1['x2']
     assert bb1['y1'] < bb1['y2']
     assert bb2['x1'] < bb2['x2']
