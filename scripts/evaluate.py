@@ -1,4 +1,6 @@
 """
+nohup python evaluate.py > ../console.log 2>&1 &
+
 Evaluation result structure:
 result/attack/model_name/case_id/pair_id/vehicle_id/frame_id & attack_info.pkl/
 
@@ -47,12 +49,17 @@ attack_frame_ids = [i for i in range(10)]
 total_frames = 10
 success_rate_threshold = 0.8
 
+# Resume controls: set any of these to resume processing from a checkpoint
+# None to start from the beginning
+resume_case_id = None
+resume_pair_id = None
+
 logging.basicConfig(filename=os.path.join(result_dir, "evaluate.log"), filemode="a", level=logging.INFO)
 
 dataset = OPV2VDataset(root_path=os.path.join(data_root, "OPV2V"), mode="test")
 
 # CHANGE THE MODEL NAME HERE
-default_spoof_model = "three_boards"
+default_shift_model = "no_wheel"
 # CHANGE THE ATTACK DATASET HERE
 attack_dataset = "lidar_shift"
 
@@ -64,7 +71,7 @@ perception_list = [
 perception_dict = OrderedDict([(x.name, x) for x in perception_list])
 
 attacker_list = [
-    LidarShiftEarlyAttacker(dataset=dataset, default_car_model=default_spoof_model, attack_dataset=attack_dataset)
+    LidarShiftEarlyAttacker(dataset=dataset, default_car_model=default_shift_model, attack_dataset=attack_dataset)
     # LidarSpoofEarlyAttacker(dataset, dense=0, sync=0, default_car_model=default_spoof_model, attack_dataset=attack_dataset),
     # LidarSpoofEarlyAttacker(dataset, dense=1, sync=0, default_car_model=default_spoof_model, attack_dataset=attack_dataset),
     # LidarSpoofEarlyAttacker(dataset, dense=2, sync=0, default_car_model=default_spoof_model, attack_dataset=attack_dataset),
@@ -145,10 +152,20 @@ def normal_case_iterator(f):
 def attack_case_iterator(f):
     def wrapper(*args, **kwargs):
         attacker = args[0]
+        resume_reached = (resume_case_id is None and resume_pair_id is None)
         for attack_id, attack in enumerate(attacker.attack_list):
             case_id = attack["attack_meta"]["case_id"]
             pair_id = attack["attack_meta"]["pair_id"]
-            data_dir = os.path.join(result_dir, "attack/{}/case{:06d}/pair{:02d}".format(default_spoof_model, case_id, pair_id))
+
+            if not resume_reached:
+                if resume_case_id is not None and case_id != resume_case_id:
+                    continue
+                if resume_pair_id is not None and pair_id != resume_pair_id:
+                    continue
+                resume_reached = True
+                logging.info("Resuming from attack_id %d (case %s, pair %s)", attack_id, str(case_id), str(pair_id))
+
+            data_dir = os.path.join(result_dir, "attack/{}/case{:06d}/pair{:02d}".format(default_shift_model, case_id, pair_id))
             os.makedirs(data_dir, exist_ok=True)
             case = dataset.get_case(case_id, tag="multi_frame", use_lidar=True, use_camera=False)
 
@@ -241,7 +258,7 @@ def attack_perception(attacker, case_id=None, case=None, pair_id=None, data_dir=
 
 
 def attack_evaluation(attacker, perception_name):
-    logging.info("Evaluating attack {} at perception {}".format(attacker.name, perception_name))
+    logging.info("Evaluating attack {} at perception {} on mesh model {}".format(attacker.name, perception_name, default_shift_model))
     case_number = len(attacker.attack_list)
     success_log = np.zeros((case_number, total_frames)).astype(bool)
     valid_log = np.ones((case_number, total_frames)).astype(bool)
@@ -279,12 +296,13 @@ def attack_evaluation(attacker, perception_name):
         
         # Calculate success rate by frames
         print(f"[INFO] Case {case_id}, Pair {pair_id}, Vehicle {ego_id}.")
+        logging.info(f"Case {case_id}, Pair {pair_id}, Vehicle {ego_id}.")
         for frame_id in attack_frame_ids:
             frame_attack_info = attack_info[frame_id].get(ego_id, {})
             if not frame_attack_info:
                 # Attack not applied in this frame. Exclude it from metrics.
                 valid_log[attack_id][frame_id] = False
-                print(f"[INVALID] Frame {frame_id} is invalid.")
+                logging.info(f"[INVALID] Frame {frame_id} is invalid.")
                 continue
 
             attack_bbox = bbox_sensor_to_map(attack["attack_meta"]["bboxes"][frame_id], case[frame_id][attacker_id]["lidar_pose"])
@@ -296,7 +314,7 @@ def attack_evaluation(attacker, perception_name):
             if pred_bboxes is None or len(pred_bboxes) == 0:
                 # Prediction is not available in this frame. Exclude it from metrics.
                 valid_log[attack_id][frame_id] = False
-                print(f"[INVALID] Frame {frame_id} has no predicted bboxes.")
+                logging.info(f"[INVALID] Frame {frame_id} has no predicted bboxes.")
                 continue
             for j, pred_bbox in enumerate(pred_bboxes):
                 iou = iou3d(pred_bbox, attack_bbox)
@@ -311,10 +329,10 @@ def attack_evaluation(attacker, perception_name):
             elif attacker.name.startswith("lidar_shift"):
                 if ego_id == victim_id and max_iou[attack_id, frame_id, 1] < 0.5:
                     success_log[attack_id][frame_id] = True
-                    print(f"[Victim] Frame {frame_id} successful!")
+                    # print(f"[Victim] Frame {frame_id} successful!")
                 elif ego_id != victim_id and max_iou[attack_id, frame_id, 1] >= 0.5:
                     success_log[attack_id][frame_id] = True
-                    print(f"[Non-Victim] Frame {frame_id} successful!")
+                    # print(f"[Non-Victim] Frame {frame_id} successful!")
 
     attack_evaluation_processor(attacker, perception_name)
 
@@ -387,7 +405,7 @@ def attack_evaluation(attacker, perception_name):
         "non_victim_total_ego": non_victim_total_ego,
         "non_victim_success_rate": non_victim_success_rate,
     }
-    save_path = os.path.join(save_dir, "attack_result_{}_{}.txt".format(attacker.name, perception_name))
+    save_path = os.path.join(save_dir, "attack_result_{}_{}_{}.txt".format(default_shift_model, perception_name, attacker.name))
     with open(save_path, "w") as f:
         json.dump(evaluation_results, f, indent=2)
 
@@ -397,9 +415,9 @@ def attack_evaluation(attacker, perception_name):
 
     logging.info("Evaluation of attack {} at perception {}, total cases {}, total valid frames {}, success frames {}, success rate {:.2f}, average IoU {:.2f}, average score {:.2f},".format(
         attacker.name, perception_name, success_log.shape[0], valid_frames_total, success_frames_total, frame_success_rate, np.mean(max_iou[:, 1]), np.mean(best_score[:, 1])))
-    logging.info("Combination (case, pair): total {}, success {}, success rate {:.2f}".format(
+    logging.info("Combination (case, pair): total {}, success {}, success rate {:.4f}".format(
         combination_total, combination_success_count, combination_success_rate))
-    logging.info("Victim and non-victim success: victim {}/{} ({:.2f}), non-victim {}/{} ({:.2f})".format(
+    logging.info("Victim and non-victim success: victim {}/{} ({:.4f}), non-victim {}/{} ({:.4f})".format(
         victim_success_ego, victim_total_ego, victim_success_rate,
         non_victim_success_ego, non_victim_total_ego, non_victim_success_rate))
 
