@@ -8,6 +8,15 @@ from mvp.config import model_3d_path, model_3d_examples
 
 def get_model_mesh(model_3d_name, bbox):
     mesh = o3d.io.read_triangle_mesh(os.path.join(model_3d_path, "{}.ply".format(model_3d_name)))
+    # Normalize mesh so its base sits on z=0 and its XY center is at the origin.
+    vertices = np.asarray(mesh.vertices)
+    if vertices.size > 0:
+        min_xyz = vertices.min(axis=0)
+        max_xyz = vertices.max(axis=0)
+        center_xy = np.array([(min_xyz[0] + max_xyz[0]) / 2.0, (min_xyz[1] + max_xyz[1]) / 2.0, 0.0])
+        mesh.translate(-center_xy)
+        mesh.translate(np.array([0.0, 0.0, -min_xyz[2]]))
+    
     model_bbox = np.array(model_3d_examples[model_3d_name])
     translate = bbox[:3]
     rotate = bbox[6]

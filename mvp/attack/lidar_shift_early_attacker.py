@@ -105,7 +105,7 @@ class LidarShiftEarlyAttacker(Attacker):
                 continue
             bbox = new_case["gt_bboxes"][i]
             meshes.append(
-                get_model_mesh(self.default_car_model, bbox)
+                get_model_mesh("car_0200", bbox)
             )
         
         intersect_points = ray_intersection(meshes, rays)
