@@ -59,12 +59,15 @@ logging.basicConfig(filename=os.path.join(result_dir, "evaluate.log"), filemode=
 dataset = OPV2VDataset(root_path=os.path.join(data_root, "OPV2V"), mode="test")
 
 # CHANGE THE MODEL NAME HERE
-default_shift_model = "no_wheel"
+default_shift_model = "no_wheel_scaled"
 # CHANGE THE ATTACK DATASET HERE
 attack_dataset = "lidar_shift"
+# CHANGE THE PRECEPTION MODEL NAME
+# pointpillar, pixor
+perception_model_name = "pixor"
 
 perception_list = [
-    OpencoodPerception(fusion_method="early", model_name="pointpillar"),
+    OpencoodPerception(fusion_method="early", model_name=perception_model_name),
     # OpencoodPerception(fusion_method="intermediate", model_name="pointpillar"),
     # OpencoodPerception(fusion_method="late", model_name="pointpillar"),
 ]
@@ -165,7 +168,7 @@ def attack_case_iterator(f):
                 resume_reached = True
                 logging.info("Resuming from attack_id %d (case %s, pair %s)", attack_id, str(case_id), str(pair_id))
 
-            data_dir = os.path.join(result_dir, "attack/{}/case{:06d}/pair{:02d}".format(default_shift_model, case_id, pair_id))
+            data_dir = os.path.join(result_dir, "attack/{}/{}/case{:06d}/pair{:02d}".format(perception_model_name, default_shift_model, case_id, pair_id))
             os.makedirs(data_dir, exist_ok=True)
             case = dataset.get_case(case_id, tag="multi_frame", use_lidar=True, use_camera=False)
 
@@ -234,7 +237,7 @@ def attack_perception(attacker, case_id=None, case=None, pair_id=None, data_dir=
     if isinstance(attacker, LidarSpoofEarlyAttacker) or isinstance(attacker, LidarRemoveEarlyAttacker) or isinstance(attacker, LidarShiftEarlyAttacker):
         # Early-fusion attacks are block box attacks. We need to apply certain models to evaluate their performance.
         # for perception_name in ["pointpillar_early", "pointpillar_intermediate"]:
-        for perception_name in ["pointpillar_early"]:
+        for perception_name in [f"{perception_model_name}_early"]:
             perception = perception_dict[perception_name]
             perception_feature = [{} for _ in range(total_frames)]
             for frame_id in attack_frame_ids:
@@ -250,7 +253,7 @@ def attack_perception(attacker, case_id=None, case=None, pair_id=None, data_dir=
                 
                 # Visualization
                 dataset.load_feature(new_case, perception_feature)
-                draw_attack(attack, case, new_case, current_frame_id=frame_id, mode="multi_frame", show=False, save=os.path.join(data_dir, "frame{}".format(frame_id), "{}.png".format(perception_name)))
+                draw_attack(attack, case, new_case, perception_model_name, current_frame_id=frame_id, mode="multi_frame", show=False, save=os.path.join(data_dir, "frame{}".format(frame_id), "{}.png".format(perception_name)))
     else:
         # Visualization
         dataset.load_feature(new_case, attack_info)
@@ -317,7 +320,13 @@ def attack_evaluation(attacker, perception_name):
                 logging.info(f"[INVALID] Frame {frame_id} has no predicted bboxes.")
                 continue
             for j, pred_bbox in enumerate(pred_bboxes):
-                iou = iou3d(pred_bbox, attack_bbox)
+                if perception_model_name == "pointpillar":
+                    iou = iou3d(pred_bbox, attack_bbox)
+                elif perception_model_name == "pixor":
+                    iou = iou2d(pred_bbox, attack_bbox)
+                else:
+                    raise NotImplementedError("Not support this perception model.")
+                
                 if iou > max_iou[attack_id, frame_id, 1]:
                     max_iou[attack_id, frame_id, 1] = iou
                     best_score[attack_id, frame_id, 1] = pred_scores[j]
@@ -327,7 +336,7 @@ def attack_evaluation(attacker, perception_name):
             elif attacker.name.startswith("lidar_remove") and max_iou[attack_id, frame_id, 1] == 0:
                 success_log[attack_id][frame_id] = True
             elif attacker.name.startswith("lidar_shift"):
-                if ego_id == victim_id and max_iou[attack_id, frame_id, 1] < 0.5:
+                if ego_id == victim_id and max_iou[attack_id, frame_id, 1] < 0.1:
                     success_log[attack_id][frame_id] = True
                     # print(f"[Victim] Frame {frame_id} successful!")
                 elif ego_id != victim_id and max_iou[attack_id, frame_id, 1] >= 0.5:
@@ -413,7 +422,7 @@ def attack_evaluation(attacker, perception_name):
     success_frames_total = int(np.sum(success_log & valid_log))
     frame_success_rate = success_frames_total / valid_frames_total if valid_frames_total > 0 else 0.0
 
-    logging.info("Evaluation of attack {} at perception {}, total cases {}, total valid frames {}, success frames {}, success rate {:.2f}, average IoU {:.2f}, average score {:.2f},".format(
+    logging.info("Evaluation of attack {} at perception {}, total cases {}, total valid frames {}, success frames {}, success rate {:.4f}, average IoU {:.4f}, average score {:.4f},".format(
         attacker.name, perception_name, success_log.shape[0], valid_frames_total, success_frames_total, frame_success_rate, np.mean(max_iou[:, 1]), np.mean(best_score[:, 1])))
     logging.info("Combination (case, pair): total {}, success {}, success rate {:.4f}".format(
         combination_total, combination_success_count, combination_success_rate))
@@ -615,7 +624,7 @@ def main():
         if "early" in attacker_name:
             print("######################## Run evaluation ########################")
             # for perception_name in ["pointpillar_early", "pointpillar_intermediate"]:
-            for perception_name in ["pointpillar_early"]:
+            for perception_name in [f"{perception_model_name}_early"]:
                 attack_evaluation(attacker, perception_name)
         # else:
         #     attack_evaluation(attacker, attacker.perception.name)

@@ -11,7 +11,8 @@ from mvp.visualize.lidar_3d_export import lidar_to_map_xyz, concat_xyz, save_asc
 from .general import draw_bbox_2d
 
 
-def draw_attack(attack, normal_case, attack_case, current_frame_id, mode="multi_frame", show=False, save=None):
+def draw_attack(attack, normal_case, attack_case, perception_model_name, current_frame_id, mode="multi_frame", show=False, save=None):
+    assert (perception_model_name in ["pixor", "pointpillar"])
     if mode == "multi_frame":
         frame_ids = [current_frame_id]
         frame_num = len(frame_ids)

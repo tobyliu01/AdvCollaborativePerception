@@ -79,12 +79,57 @@ class OpencoodPerception(Perception):
                                                               self.dataset)
             if pred_box_tensor is None or pred_score is None:
                 return np.empty((0, 7), dtype=float), np.empty((0,), dtype=float)
-            
-        pred_bboxes = pred_box_tensor.cpu().numpy()
-        pred_bboxes = box_utils.corner_to_center(pred_bboxes, order="lwh")
-        pred_bboxes[:,2] -= 0.5 * pred_bboxes[:,5]
-        pred_scores = pred_score.cpu().numpy()
+        
+        pred_box_raw = pred_box_tensor.cpu().numpy()
+        pred_score_raw = pred_score.cpu().numpy()
+
+        if self.model_name == "pixor":
+            pred_bboxes = self.pixor_2d_boxes_to_3d(pred_box_raw)
+            pred_scores = pred_score_raw
+
+        elif self.model_name == "pointpillar":
+            pred_bboxes = box_utils.corner_to_center(pred_box_raw, order="lwh")
+            pred_bboxes[:,2] -= 0.5 * pred_bboxes[:,5]
+            pred_scores = pred_score_raw
+        else:
+            raise NotImplementedError("Do not support other perception models")
         return pred_bboxes, pred_scores
+
+    @staticmethod
+    def pixor_2d_boxes_to_3d(pred_box_raw: np.ndarray) -> np.ndarray:
+        """
+        Convert PIXOR outputs into fake 3D boxes (N,7) for downstream compatibility.
+        Accepts either corners (N,4,2) or centers (N,5).
+        """
+        if pred_box_raw.ndim == 3 and pred_box_raw.shape[1:] == (4, 2):
+            boxes = []
+            for box in pred_box_raw:
+                p0, p1, p2, p3 = box
+                v1 = p1 - p0
+                v2 = p3 - p0
+                len1 = np.linalg.norm(v1)
+                len2 = np.linalg.norm(v2)
+                if len1 >= len2:
+                    length, width = len1, len2
+                    heading = np.arctan2(v1[1], v1[0])
+                else:
+                    length, width = len2, len1
+                    heading = np.arctan2(v2[1], v2[0])
+                cx = box[:, 0].mean()
+                cy = box[:, 1].mean()
+                boxes.append([cx, cy, 0.0, length, width, 0.0, heading])
+            return np.array(boxes, dtype=pred_box_raw.dtype)
+        if pred_box_raw.ndim == 2 and pred_box_raw.shape[1] == 5:
+            pad = np.zeros((pred_box_raw.shape[0], 7), dtype=pred_box_raw.dtype)
+            pad[:, 0] = pred_box_raw[:, 0]  # x
+            pad[:, 1] = pred_box_raw[:, 1]  # y
+            pad[:, 2] = 0.0                  # z
+            pad[:, 3] = pred_box_raw[:, 3]  # length
+            pad[:, 4] = pred_box_raw[:, 2]  # width
+            pad[:, 5] = 0.0                  # height
+            pad[:, 6] = pred_box_raw[:, 4]  # yaw
+            return pad
+        raise NotImplementedError("Wrong dimension of bbox")
     
     def run_multi_vehicle(self, multi_vehicle_case, ego_id):
         pred_bboxes, pred_scores = self.run(multi_vehicle_case, ego_id)

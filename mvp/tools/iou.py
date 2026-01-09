@@ -153,12 +153,27 @@ def iou3d(bbox1, bbox2):
 
 
 def iou2d(bbox1, bbox2):
-    x11, x12 = bbox1[0], bbox1[0] + bbox1[2]
-    y11, y12 = bbox1[1], bbox1[1] + bbox1[3]
-    x21, x22 = bbox2[0], bbox2[0] + bbox2[2]
-    y21, y22 = bbox2[1], bbox2[1] + bbox2[3]
-    bb1 = {'x1': min(x11, x12), 'x2': max(x11, x12), 'y1': min(y11, y12), 'y2': max(y11, y12)}
-    bb2 = {'x1': min(x21, x22), 'x2': max(x21, x22), 'y1': min(y21, y22), 'y2': max(y21, y22)}
+    def to_aabb(bbox):
+        if bbox.shape[0] == 7:
+            cx, cy, l, w, yaw = bbox[0], bbox[1], bbox[3], bbox[4], bbox[6]
+            dx = l / 2.0
+            dy = w / 2.0
+            corners = np.array([[ dx,  dy],
+                                [ dx, -dy],
+                                [-dx, -dy],
+                                [-dx,  dy]])
+            rot = np.array([[np.cos(yaw), -np.sin(yaw)],
+                            [np.sin(yaw),  np.cos(yaw)]])
+            corners = (rot @ corners.T).T + np.array([cx, cy])
+            x_min, y_min = corners[:, 0].min(), corners[:, 1].min()
+            x_max, y_max = corners[:, 0].max(), corners[:, 1].max()
+            return x_min, x_max, y_min, y_max
+        raise ValueError("Unsupported bbox format for iou2d")
+
+    x11, x12, y11, y12 = to_aabb(bbox1)
+    x21, x22, y21, y22 = to_aabb(bbox2)
+    bb1 = {'x1': x11, 'x2': x12, 'y1': y11, 'y2': y12}
+    bb2 = {'x1': x21, 'x2': x22, 'y1': y21, 'y2': y22}
 
     """
     Calculate the Intersection over Union (IoU) of two bounding boxes.
