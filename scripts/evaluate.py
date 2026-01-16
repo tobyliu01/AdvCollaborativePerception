@@ -397,6 +397,11 @@ def attack_evaluation(attacker, perception_name):
     victim_success_rate = victim_success_ego / victim_total_ego if victim_total_ego > 0 else 0.0
     non_victim_success_rate = non_victim_success_ego / non_victim_total_ego if non_victim_total_ego > 0 else 0.0
 
+    # Calculate success rate by single frame
+    valid_frames_total = int(np.sum(valid_log))
+    success_frames_total = int(np.sum(success_log & valid_log))
+    frame_success_rate = success_frames_total / valid_frames_total if valid_frames_total > 0 else 0.0
+    
     # Save the evaluation results
     # pickle_cache_dump({"success": success_log, "iou": max_iou, "score": best_score},
     #                   os.path.join(save_dir, "attack_result_{}_{}.pkl".format(attacker.name, perception_name)))
@@ -407,6 +412,9 @@ def attack_evaluation(attacker, perception_name):
         "combination_total": combination_total,
         "combination_success_count": combination_success_count,
         "combination_success_rate": combination_success_rate,
+        "valid_frames_total": valid_frames_total,
+        "success_frames_total": success_frames_total,
+        "frame_success_rate": frame_success_rate,
         "victim_success_ego": victim_success_ego,
         "victim_total_ego": victim_total_ego,
         "victim_success_rate": victim_success_rate,
@@ -417,10 +425,6 @@ def attack_evaluation(attacker, perception_name):
     save_path = os.path.join(save_dir, "attack_result_{}_{}_{}.txt".format(default_shift_model, perception_name, attacker.name))
     with open(save_path, "w") as f:
         json.dump(evaluation_results, f, indent=2)
-
-    valid_frames_total = int(np.sum(valid_log))
-    success_frames_total = int(np.sum(success_log & valid_log))
-    frame_success_rate = success_frames_total / valid_frames_total if valid_frames_total > 0 else 0.0
 
     logging.info("Evaluation of attack {} at perception {}, total cases {}, total valid frames {}, success frames {}, success rate {:.4f}, average IoU {:.4f}, average score {:.4f},".format(
         attacker.name, perception_name, success_log.shape[0], valid_frames_total, success_frames_total, frame_success_rate, np.mean(max_iou[:, 1]), np.mean(best_score[:, 1])))
@@ -621,11 +625,11 @@ def main():
     logging.info("######################## Launching attacks ########################")
     for attacker_name, attacker in attacker_dict.items():
         attack_perception(attacker)
-        if "early" in attacker_name:
-            print("######################## Run evaluation ########################")
-            # for perception_name in ["pointpillar_early", "pointpillar_intermediate"]:
-            for perception_name in [f"{perception_model_name}_early"]:
-                attack_evaluation(attacker, perception_name)
+        # if "early" in attacker_name:
+        #     print("######################## Run evaluation ########################")
+        #     # for perception_name in ["pointpillar_early", "pointpillar_intermediate"]:
+        #     for perception_name in [f"{perception_model_name}_early"]:
+        #         attack_evaluation(attacker, perception_name)
         # else:
         #     attack_evaluation(attacker, attacker.perception.name)
     
