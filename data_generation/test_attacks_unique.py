@@ -5,7 +5,7 @@ from pathlib import Path
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Deduplicate generated attack cases")
-    parser.add_argument("--input", type=Path, default=Path("test_attacks.pkl"), help="Path to the input cases pkl")
+    parser.add_argument("--input", type=Path, default=Path("test_attacks_difficulty.pkl"), help="Path to the input cases pkl")
     parser.add_argument("--output", type=Path, default=Path("test_attacks_unique.pkl"), help="Where to save the deduplicated pkl")
     return parser.parse_args()
 

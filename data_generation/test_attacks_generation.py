@@ -18,8 +18,8 @@ from mvp.data.util import get_point_indices_in_bbox, rotation_matrix
 
 FRAMES_PER_SCENARIO = 60
 MIN_POINTS_IN_BBOX = 10
-MAX_VICTIM_OBJECT_DISTANCE = 50.0
-LOG_PATH = Path(__file__).resolve().parent / "test_attacks_log.txt"
+MAX_VICTIM_OBJECT_DISTANCE = 40.0
+LOG_PATH = Path(__file__).resolve().parent / "test_attacks_difficulty_log.txt"
 scenarios = ["2021_08_22_21_41_24", "2021_08_23_16_06_26", "2021_08_23_21_07_10", "2021_08_24_07_45_41", "2021_08_23_12_58_19",\
              "2021_08_23_15_19_19", "2021_08_24_20_49_54", "2021_08_21_09_28_12", "2021_08_23_17_22_47", "2021_08_22_09_08_29",\
              "2021_08_22_07_52_02", "2021_08_20_21_10_24", "2021_08_24_20_09_18", "2021_08_23_21_47_19", "2021_08_18_19_48_05"]
@@ -38,6 +38,16 @@ def format_distance_value(dist: Optional[float]) -> str:
     return "NA" if dist is None else f"{dist:.2f}"
 
 
+def difficulty_from_min_distance(min_distance: float) -> int:
+    if min_distance <= 5.0:
+        return 3
+    if min_distance <= 10.0:
+        return 2
+    if min_distance <= 15.0:
+        return 1
+    return 0
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Generate randomized attack cases from OPV2V metadata.",
@@ -45,7 +55,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--datadir",
         type=str,
-        default="../data/OPV2V",
+        default="/workspace/hdd/datasets/yutongl/AdvCollaborativePerception/data/OPV2V",
         help="Dataset root that contains train/validate/test PKL files.",
     )
     parser.add_argument(
@@ -76,7 +86,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--output",
         type=str,
-        default="./test_attacks.pkl",
+        default="./test_attacks_difficulty.pkl",
         help="Where to store the generated cases (PKL file).",
     )
     parser.add_argument(
@@ -377,6 +387,8 @@ def generate_cases_for_spec(
                 if not (frame_counts and all(count >= MIN_POINTS_IN_BBOX for _, count in frame_counts)):
                     continue
 
+                difficulty = difficulty_from_min_distance(min_distance)
+
                 # Filter 3: ensure at least one collaborator observes the object.
                 collaborator_ok = False
                 collab_details: List[str] = []
@@ -420,6 +432,7 @@ def generate_cases_for_spec(
                         "victim_vehicle_id": victim_vehicle_id,
                         "object_id": object_id,
                         "vehicle_ids": vehicle_ids.copy(),
+                        "difficulty": difficulty,
                     },
                 )
                 sampled_count += 1

@@ -6,7 +6,7 @@ from pathlib import Path
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Generate new test_cases.pkl from test_cases_old.pkl and attacks list")
     parser.add_argument("--source", type=Path, default=Path("test_cases_old.pkl"), help="Path to the old test_cases.pkl")
-    parser.add_argument("--attacks", type=Path, default=Path("test_attacks_unique.pkl"), help="Path to the deduplicated attacks PKL")
+    parser.add_argument("--attacks", type=Path, default=Path("test_attacks.pkl"), help="Path to the deduplicated attacks PKL")
     parser.add_argument("--output", type=Path, default=Path("test_cases.pkl"), help="Where to store the new merged PKL")
     return parser.parse_args()
 
