@@ -46,8 +46,8 @@ result_dir = os.path.normpath("/workspace/hdd/datasets/yutongl/AdvCollaborativeP
 os.makedirs(result_dir, exist_ok=True)
 
 attack_frame_ids = [i for i in range(10)]
-total_frames = 10
-success_rate_threshold = 0.8
+TOTAL_FRAMES = 10
+SUCCESS_RATE_THRESHOLD = 0.8
 
 # Resume controls: set any of these to resume processing from a checkpoint
 # None to start from the beginning
@@ -59,7 +59,7 @@ logging.basicConfig(filename=os.path.join(result_dir, "evaluate.log"), filemode=
 dataset = OPV2VDataset(root_path=os.path.join(data_root, "OPV2V"), mode="test")
 
 # CHANGE THE MODEL NAME HERE
-default_shift_model = "no_wheel_scaled"
+default_shift_model = "adv_300"
 # CHANGE THE ATTACK DATASET HERE
 attack_dataset = "lidar_shift"
 # CHANGE THE PRECEPTION MODEL NAME
@@ -193,7 +193,7 @@ def normal_perception(case_id=None, case=None, data_dir=None):
         else:
             logging.info("Processing perception {} on normal case {}".format(perception.name, case_id))
 
-        perception_feature = [{} for _ in range(total_frames)]
+        perception_feature = [{} for _ in range(TOTAL_FRAMES)]
         for frame_id in attack_frame_ids:
             for vehicle_id in list(case[frame_id].keys()):
                 pred_bboxes, pred_scores = perception.run(case[frame_id], ego_id=vehicle_id)
@@ -239,7 +239,7 @@ def attack_perception(attacker, case_id=None, case=None, pair_id=None, data_dir=
         # for perception_name in ["pointpillar_early", "pointpillar_intermediate"]:
         for perception_name in [f"{perception_model_name}_early"]:
             perception = perception_dict[perception_name]
-            perception_feature = [{} for _ in range(total_frames)]
+            perception_feature = [{} for _ in range(TOTAL_FRAMES)]
             for frame_id in attack_frame_ids:
                 os.makedirs(os.path.join(data_dir, "frame{}".format(frame_id)), exist_ok=True)
                 pred_bboxes, pred_scores = perception.run(new_case[frame_id], ego_id=attack_opts["ego_vehicle_id"])
@@ -263,10 +263,10 @@ def attack_perception(attacker, case_id=None, case=None, pair_id=None, data_dir=
 def attack_evaluation(attacker, perception_name):
     logging.info("Evaluating attack {} at perception {} on mesh model {}".format(attacker.name, perception_name, default_shift_model))
     case_number = len(attacker.attack_list)
-    success_log = np.zeros((case_number, total_frames)).astype(bool)
-    valid_log = np.ones((case_number, total_frames)).astype(bool)
-    max_iou = np.zeros((case_number, total_frames, 2)).astype(np.float32)
-    best_score = np.zeros((case_number, total_frames, 2)).astype(np.float32)
+    success_log = np.zeros((case_number, TOTAL_FRAMES)).astype(bool)
+    valid_log = np.ones((case_number, TOTAL_FRAMES)).astype(bool)
+    max_iou = np.zeros((case_number, TOTAL_FRAMES, 2)).astype(np.float32)
+    best_score = np.zeros((case_number, TOTAL_FRAMES, 2)).astype(np.float32)
 
     save_dir = os.path.join(result_dir, "evaluation")
     os.makedirs(save_dir, exist_ok=True)
@@ -347,10 +347,12 @@ def attack_evaluation(attacker, perception_name):
 
     # Aggregate success rate by (case_id, pair_id) combinations
     combination_index_map = {}
+    combination_difficulty_map = {}
     for idx, attack in enumerate(attacker.attack_list):
         meta = attack["attack_meta"]
         combination_key = (meta["case_id"], meta["pair_id"])
         combination_index_map.setdefault(combination_key, []).append(idx)
+        combination_difficulty_map.setdefault(combination_key, meta["difficulty"])
     combination_results = []
     for (case_id, pair_id), attack_indices in combination_index_map.items():
         ego_success_details = []
@@ -359,7 +361,7 @@ def attack_evaluation(attacker, perception_name):
             victim_id = attacker.attack_list[idx]["attack_meta"]["victim_vehicle_id"]
             frames_succeeded = int(np.sum(success_log[idx] & valid_log[idx]))
             valid_frames = int(np.sum(valid_log[idx]))
-            ego_success = (float(frames_succeeded / valid_frames) >= success_rate_threshold) if valid_frames > 0 else True
+            ego_success = (float(frames_succeeded / valid_frames) >= SUCCESS_RATE_THRESHOLD) if valid_frames > 0 else True
             ego_success_details.append({
                 "ego_id": ego_id,
                 "is_victim": bool(ego_id==victim_id),
@@ -372,6 +374,7 @@ def attack_evaluation(attacker, perception_name):
         combination_results.append({
             "case_id": case_id,
             "pair_id": pair_id,
+            "difficulty": combination_difficulty_map.get((case_id, pair_id)),
             "combination_success": combo_success,
             "ego_details": ego_success_details,
         })
@@ -381,19 +384,44 @@ def attack_evaluation(attacker, perception_name):
 
     # Calculate success rate by whether the ego vehicle is the victim.
     victim_success_ego = victim_total_ego = non_victim_success_ego = non_victim_total_ego = 0
+    difficulty_stats = {}
+    difficulty_levels = sorted(diff for diff in {attack["attack_meta"]["difficulty"] for attack in attacker.attack_list} if diff is not None)
+    for difficulty in difficulty_levels:
+        difficulty_stats[difficulty] = {
+            "combination_total": 0,
+            "combination_success_count": 0,
+            "combination_success_rate": 0.0,
+            "victim_success_ego": 0,
+            "victim_total_ego": 0,
+            "victim_success_rate": 0.0,
+            "non_victim_success_ego": 0,
+            "non_victim_total_ego": 0,
+            "non_victim_success_rate": 0.0,
+            "valid_frames_total": 0,
+            "success_frames_total": 0,
+            "frame_success_rate": 0.0,
+        }
     for idx, attack in enumerate(attacker.attack_list):
         ego_id = attack["attack_meta"]["ego_vehicle_id"]
         victim_id = attack["attack_meta"]["victim_vehicle_id"]
+        difficulty = attack["attack_meta"]["difficulty"]
+        assert(difficulty in difficulty_stats)
         is_victim = ego_id == victim_id
         frames_succeeded = int(np.sum(success_log[idx] & valid_log[idx]))
         valid_frames = int(np.sum(valid_log[idx]))
-        ego_success = (float(frames_succeeded / valid_frames) >= success_rate_threshold) if valid_frames > 0 else True
+        ego_success = (float(frames_succeeded / valid_frames) >= SUCCESS_RATE_THRESHOLD) if valid_frames > 0 else True
         if is_victim:
             victim_total_ego += 1
             victim_success_ego += int(ego_success)
+            difficulty_stats[difficulty]["victim_total_ego"] += 1
+            difficulty_stats[difficulty]["victim_success_ego"] += int(ego_success)
         else:
             non_victim_total_ego += 1
             non_victim_success_ego += int(ego_success)
+            difficulty_stats[difficulty]["non_victim_total_ego"] += 1
+            difficulty_stats[difficulty]["non_victim_success_ego"] += int(ego_success)
+        difficulty_stats[difficulty]["valid_frames_total"] += valid_frames
+        difficulty_stats[difficulty]["success_frames_total"] += frames_succeeded
     victim_success_rate = victim_success_ego / victim_total_ego if victim_total_ego > 0 else 0.0
     non_victim_success_rate = non_victim_success_ego / non_victim_total_ego if non_victim_total_ego > 0 else 0.0
 
@@ -401,6 +429,23 @@ def attack_evaluation(attacker, perception_name):
     valid_frames_total = int(np.sum(valid_log))
     success_frames_total = int(np.sum(success_log & valid_log))
     frame_success_rate = success_frames_total / valid_frames_total if valid_frames_total > 0 else 0.0
+
+    # Aggregate combination success rate by difficulty.
+    for combination_result in combination_results:
+        difficulty = combination_result.get("difficulty")
+        assert(difficulty in difficulty_stats)
+        difficulty_stats[difficulty]["combination_total"] += 1
+        difficulty_stats[difficulty]["combination_success_count"] += int(combination_result["combination_success"])
+
+    for difficulty, stats in difficulty_stats.items():
+        if stats["combination_total"] > 0:
+            stats["combination_success_rate"] = stats["combination_success_count"] / stats["combination_total"]
+        if stats["victim_total_ego"] > 0:
+            stats["victim_success_rate"] = stats["victim_success_ego"] / stats["victim_total_ego"]
+        if stats["non_victim_total_ego"] > 0:
+            stats["non_victim_success_rate"] = stats["non_victim_success_ego"] / stats["non_victim_total_ego"]
+        if stats["valid_frames_total"] > 0:
+            stats["frame_success_rate"] = stats["success_frames_total"] / stats["valid_frames_total"]
     
     # Save the evaluation results
     # pickle_cache_dump({"success": success_log, "iou": max_iou, "score": best_score},
@@ -421,6 +466,7 @@ def attack_evaluation(attacker, perception_name):
         "non_victim_success_ego": non_victim_success_ego,
         "non_victim_total_ego": non_victim_total_ego,
         "non_victim_success_rate": non_victim_success_rate,
+        "difficulty_stats": difficulty_stats,
     }
     save_path = os.path.join(save_dir, "attack_result_{}_{}_{}.txt".format(default_shift_model, perception_name, attacker.name))
     with open(save_path, "w") as f:
@@ -433,6 +479,25 @@ def attack_evaluation(attacker, perception_name):
     logging.info("Victim and non-victim success: victim {}/{} ({:.4f}), non-victim {}/{} ({:.4f})".format(
         victim_success_ego, victim_total_ego, victim_success_rate,
         non_victim_success_ego, non_victim_total_ego, non_victim_success_rate))
+    for difficulty in sorted(difficulty_stats):
+        stats = difficulty_stats[difficulty]
+        logging.info(
+            "Difficulty {}: combination {}/{} ({:.4f}), frame {}/{} ({:.4f}), victim {}/{} ({:.4f}), non-victim {}/{} ({:.4f})".format(
+                difficulty,
+                stats["combination_success_count"],
+                stats["combination_total"],
+                stats["combination_success_rate"],
+                stats["success_frames_total"],
+                stats["valid_frames_total"],
+                stats["frame_success_rate"],
+                stats["victim_success_ego"],
+                stats["victim_total_ego"],
+                stats["victim_success_rate"],
+                stats["non_victim_success_ego"],
+                stats["non_victim_total_ego"],
+                stats["non_victim_success_rate"],
+            )
+        )
 
 
 @normal_case_iterator
@@ -443,7 +508,7 @@ def occupancy_map(lidar_seg_api, case_id=None, case=None, data_dir=None):
     else:
         logging.info("Processing occupancy map of case {}".format(case_id))
 
-    occupancy_feature = [{} for _ in range(total_frames)]
+    occupancy_feature = [{} for _ in range(TOTAL_FRAMES)]
     for frame_id in attack_frame_ids:
         for vehicle_id, vehicle_data in case[frame_id].items():
             lidar, lidar_pose = vehicle_data["lidar"], vehicle_data["lidar_pose"]
@@ -625,11 +690,11 @@ def main():
     logging.info("######################## Launching attacks ########################")
     for attacker_name, attacker in attacker_dict.items():
         attack_perception(attacker)
-        # if "early" in attacker_name:
-        #     print("######################## Run evaluation ########################")
-        #     # for perception_name in ["pointpillar_early", "pointpillar_intermediate"]:
-        #     for perception_name in [f"{perception_model_name}_early"]:
-        #         attack_evaluation(attacker, perception_name)
+        if "early" in attacker_name:
+            print("######################## Run evaluation ########################")
+            # for perception_name in ["pointpillar_early", "pointpillar_intermediate"]:
+            for perception_name in [f"{perception_model_name}_early"]:
+                attack_evaluation(attacker, perception_name)
         # else:
         #     attack_evaluation(attacker, attacker.perception.name)
     
