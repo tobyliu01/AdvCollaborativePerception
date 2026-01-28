@@ -20,9 +20,9 @@ def get_model_mesh(model_3d_name, bbox):
     model_bbox = np.array(model_3d_examples[model_3d_name])
     translate = bbox[:3]
     rotate = bbox[6]
-    scale = np.min(bbox[3:6] / model_bbox[3:6]) 
-    if scale is not None:
-        mesh.scale(scale, np.array([0, 0, 0]).T)
+
+    # Keep original mesh size. Override bbox dimensions with model's bbox size.
+    bbox[3:6] = model_bbox[3:6]
     if rotate is not None:
         mesh.rotate(rotation_matrix(0, rotate, 0), np.zeros(3).T)
     if translate is not None:
