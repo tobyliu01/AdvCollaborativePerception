@@ -59,7 +59,7 @@ logging.basicConfig(filename=os.path.join(result_dir, "evaluate.log"), filemode=
 dataset = OPV2VDataset(root_path=os.path.join(data_root, "OPV2V"), mode="test")
 
 # CHANGE THE MODEL NAME HERE
-default_shift_model = "adv_300"
+default_shift_model = "adv_car_10_non_victim"
 # CHANGE THE ATTACK DATASET HERE
 attack_dataset = "lidar_shift"
 # CHANGE THE PRECEPTION MODEL NAME
