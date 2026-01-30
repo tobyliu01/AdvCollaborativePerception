@@ -48,6 +48,8 @@ os.makedirs(result_dir, exist_ok=True)
 attack_frame_ids = [i for i in range(10)]
 TOTAL_FRAMES = 10
 SUCCESS_RATE_THRESHOLD = 0.8
+VICTIM_IOU_THRESHOLD = 0.1
+NONVICTIM_IOU_THRESHOLD = 0.3
 
 # Resume controls: set any of these to resume processing from a checkpoint
 # None to start from the beginning
@@ -59,7 +61,7 @@ logging.basicConfig(filename=os.path.join(result_dir, "evaluate.log"), filemode=
 dataset = OPV2VDataset(root_path=os.path.join(data_root, "OPV2V"), mode="test")
 
 # CHANGE THE MODEL NAME HERE
-default_shift_model = "adv_car_10_non_victim"
+default_shift_model = "car_side"
 # CHANGE THE ATTACK DATASET HERE
 attack_dataset = "lidar_shift"
 # CHANGE THE PRECEPTION MODEL NAME
@@ -308,8 +310,7 @@ def attack_evaluation(attacker, perception_name):
                 logging.info(f"[INVALID] Frame {frame_id} is invalid.")
                 continue
 
-            attack_bbox = bbox_sensor_to_map(attack["attack_meta"]["bboxes"][frame_id], case[frame_id][attacker_id]["lidar_pose"])
-            attack_bbox = bbox_map_to_sensor(attack_bbox, case[frame_id][ego_id]["lidar_pose"])
+            attack_bbox = attack["attack_meta"]["bboxes"][frame_id]
 
             feature_data = pickle_cache_load(os.path.join(feature_data_path, f"frame{frame_id}", "{}.pkl".format(perception_name)))
             pred_bboxes = feature_data[frame_id][ego_id]["pred_bboxes"]
@@ -336,12 +337,10 @@ def attack_evaluation(attacker, perception_name):
             elif attacker.name.startswith("lidar_remove") and max_iou[attack_id, frame_id, 1] == 0:
                 success_log[attack_id][frame_id] = True
             elif attacker.name.startswith("lidar_shift"):
-                if ego_id == victim_id and max_iou[attack_id, frame_id, 1] < 0.1:
+                if ego_id == victim_id and max_iou[attack_id, frame_id, 1] < VICTIM_IOU_THRESHOLD:
                     success_log[attack_id][frame_id] = True
-                    # print(f"[Victim] Frame {frame_id} successful!")
-                elif ego_id != victim_id and max_iou[attack_id, frame_id, 1] >= 0.5:
+                elif ego_id != victim_id and max_iou[attack_id, frame_id, 1] >= NONVICTIM_IOU_THRESHOLD:
                     success_log[attack_id][frame_id] = True
-                    # print(f"[Non-Victim] Frame {frame_id} successful!")
 
     attack_evaluation_processor(attacker, perception_name)
 

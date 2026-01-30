@@ -153,74 +153,69 @@ def iou3d(bbox1, bbox2):
 
 
 def iou2d(bbox1, bbox2):
-    def to_aabb(bbox):
+    def to_oriented_bbox(bbox):
+        """
+        Accept:
+          - (x, y, w, h) top-left axis-aligned
+          - (x, y, w, l, yaw) center-based 2D
+          - (x, y, z, l, w, h, yaw) fake 3D
+        Return (cx, cy, length, width, yaw) with yaw in radians.
+        """
+        bbox = np.asarray(bbox).reshape(-1)
+        if bbox.shape[0] == 4:
+            x, y, w, h = bbox
+            return x + w / 2.0, y + h / 2.0, w, h, 0.0
+        if bbox.shape[0] == 5:
+            x, y, w, l, yaw = bbox
+            return x, y, l, w, yaw
         if bbox.shape[0] == 7:
-            cx, cy, l, w, yaw = bbox[0], bbox[1], bbox[3], bbox[4], bbox[6]
-            dx = l / 2.0
-            dy = w / 2.0
-            corners = np.array([[ dx,  dy],
-                                [ dx, -dy],
-                                [-dx, -dy],
-                                [-dx,  dy]])
-            rot = np.array([[np.cos(yaw), -np.sin(yaw)],
-                            [np.sin(yaw),  np.cos(yaw)]])
-            corners = (rot @ corners.T).T + np.array([cx, cy])
-            x_min, y_min = corners[:, 0].min(), corners[:, 1].min()
-            x_max, y_max = corners[:, 0].max(), corners[:, 1].max()
-            return x_min, x_max, y_min, y_max
+            x, y, l, w, yaw = bbox[0], bbox[1], bbox[3], bbox[4], bbox[6]
+            return x, y, l, w, yaw
         raise ValueError("Unsupported bbox format for iou2d")
 
-    x11, x12, y11, y12 = to_aabb(bbox1)
-    x21, x22, y21, y22 = to_aabb(bbox2)
-    bb1 = {'x1': x11, 'x2': x12, 'y1': y11, 'y2': y12}
-    bb2 = {'x1': x21, 'x2': x22, 'y1': y21, 'y2': y22}
+    def to_corners(cx, cy, l, w, yaw):
+        # Counter-clockwise corners
+        dx = l / 2.0
+        dy = w / 2.0
+        corners = np.array([[ dx,  dy],
+                            [-dx,  dy],
+                            [-dx, -dy],
+                            [ dx, -dy]])
+        rot = np.array([[np.cos(yaw), -np.sin(yaw)],
+                        [np.sin(yaw),  np.cos(yaw)]])
+        return (rot @ corners.T).T + np.array([cx, cy])
 
-    """
-    Calculate the Intersection over Union (IoU) of two bounding boxes.
-
-    Parameters
-    ----------
-    bb1 : dict
-        Keys: {'x1', 'x2', 'y1', 'y2'}
-        The (x1, y1) position is at the top left corner,
-        the (x2, y2) position is at the bottom right corner
-    bb2 : dict
-        Keys: {'x1', 'x2', 'y1', 'y2'}
-        The (x, y) position is at the top left corner,
-        the (x2, y2) position is at the bottom right corner
-
-    Returns
-    -------
-    float
-        in [0, 1]
-    """
-    
-    assert bb1['x1'] < bb1['x2']
-    assert bb1['y1'] < bb1['y2']
-    assert bb2['x1'] < bb2['x2']
-    assert bb2['y1'] < bb2['y2']
-
-    # determine the coordinates of the intersection rectangle
-    x_left = max(bb1['x1'], bb2['x1'])
-    y_top = max(bb1['y1'], bb2['y1'])
-    x_right = min(bb1['x2'], bb2['x2'])
-    y_bottom = min(bb1['y2'], bb2['y2'])
-
-    if x_right < x_left or y_bottom < y_top:
+    c1 = to_oriented_bbox(bbox1)
+    c2 = to_oriented_bbox(bbox2)
+    rect1 = to_corners(*c1).tolist()
+    rect2 = to_corners(*c2).tolist()
+    area1 = poly_area(np.array(rect1)[:, 0], np.array(rect1)[:, 1])
+    area2 = poly_area(np.array(rect2)[:, 0], np.array(rect2)[:, 1])
+    inter, inter_area = convex_hull_intersection(rect1, rect2)
+    if inter is None or inter_area <= 0:
         return 0.0
-
-    # The intersection of two axis-aligned bounding boxes is always an
-    # axis-aligned bounding box
-    intersection_area = (x_right - x_left) * (y_bottom - y_top)
-
-    # compute the area of both AABBs
-    bb1_area = (bb1['x2'] - bb1['x1']) * (bb1['y2'] - bb1['y1'])
-    bb2_area = (bb2['x2'] - bb2['x1']) * (bb2['y2'] - bb2['y1'])
-
-    # compute the intersection over union by taking the intersection
-    # area and dividing it by the sum of prediction + ground-truth
-    # areas - the interesection area
-    iou = intersection_area / float(bb1_area + bb2_area - intersection_area)
-    assert iou >= 0.0
-    assert iou <= 1.0
+    iou = inter_area / float(area1 + area2 - inter_area)
     return iou
+
+
+def test_iou2d_oriented():
+    b1 = np.array([0.0, 0.0, 2.0, 4.0, 0.0])  # center-based (x,y,w,l,yaw)
+    b2 = np.array([0.0, 0.0, 2.0, 4.0, 0.0])
+    assert abs(iou2d(b1, b2) - 1.0) < 1e-6
+
+    b3 = np.array([4.0, 0.0, 2.0, 4.0, 0.0])
+    assert abs(iou2d(b1, b3)) < 1e-6
+
+    b4 = np.array([0.0, 0.0, 2.0, 4.0, np.pi / 2.0])
+    assert abs(iou2d(b1, b4) - 1/3) < 1e-6
+
+    b5 = np.array([2.0, 0.0, 2.0, 4.0, 0.0])
+    assert abs(iou2d(b1, b5) - 1/3) < 1e-6
+
+    b6 = np.array([0.0, 0.0, 1.0, 2.0, 0.0])
+    assert abs(iou2d(b1, b6) - 1/4) < 1e-6
+
+
+if __name__ == "__main__":
+    test_iou2d_oriented()
+    print("test_iou2d_oriented passed")

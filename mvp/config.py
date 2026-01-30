@@ -22,12 +22,11 @@ model_3d_examples = {
     "car_015": np.array([0,0,0,4.30,1.91,1.26,0]),
     "car_020": np.array([0,0,0,4.30,1.91,1.26,0]),
     "car_low_poly": np.array([0,0,0,4.30,1.91,1.26,0]),
-    "no_wheel": np.array([0,0,0,4.4,2.1,1.23,0]),
-    "no_wheel_scaled": np.array([0,0,0,4.4,2.1,1.6,0]),
+    "car_side": np.array([0,0,0,4.4,2.1,1.6,0]),
     "adv_20_samples": np.array([0,0,0,4.4,2.16,1.62,0]),
     "adv_300_samples": np.array([0,0,0,4.39,2.18,1.65,0]),
-    "adv_car_non_victim": np.array([0,0,0,4.42,2.19,1.67,0]),
-    "adv_car_victim": np.array([0,0,0,4.33,2.18,1.67,0]),
+    "adv_car_side_non_victim": np.array([0,0,0,4.42,2.19,1.67,0]),
+    "adv_car_side_victim": np.array([0,0,0,4.33,2.18,1.67,0]),
     "two_planes_0": np.array([0,0,0,4.4,2.0,1.6,0]),
     "adv_two_planes_0_non_victim": np.array([0,0,0,4.46,2.2,1.69,0]),
     "adv_two_planes_0_victim": np.array([0,0,0,4.46,2.2,1.69,0]),
@@ -36,6 +35,9 @@ model_3d_examples = {
     "adv_two_planes_10_victim": np.array([0,0,0,4.49,2.18,1.65,0]),
     "car_10": np.array([0,0,0,4.4,2.0,1.6,0]),
     "adv_car_10_non_victim": np.array([0,0,0,4.34,2.01,1.67,0]),
+    "real_car": np.array([0,0,0,4.4,2.2,1.6,0]),
+    "adv_real_car_victim": np.array([0,0,0,4.39,2.23,1.64,0]),
+    "adv_real_car_non_victim": np.array([0,0,0,4.42,2.28,1.65,0]),
 }
 
 class_id_map = {
