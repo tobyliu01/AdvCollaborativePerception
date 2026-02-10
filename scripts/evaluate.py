@@ -1,5 +1,11 @@
 """
-nohup python evaluate.py > ../console.log 2>&1 &
+Checklist before every run:
+1. Filename of console.log
+2. Filename of evaluate.log
+3. default_shift_model
+4. IoU threshold
+
+nohup python evaluate.py > ../console_19.log 2>&1 &
 
 Evaluation result structure:
 result/attack/model_name/case_id/pair_id/vehicle_id/frame_id & attack_info.pkl/
@@ -20,7 +26,7 @@ import numpy as np
 from collections import OrderedDict
 import json
 
-from mvp.config import data_root
+from mvp.config import data_root, model_3d_examples
 from mvp.data.util import bbox_sensor_to_map, bbox_map_to_sensor, pcd_sensor_to_map, pcd_map_to_sensor, get_distance
 from mvp.tools.iou import iou3d, iou2d
 from mvp.tools.polygon_space import bbox_to_polygon
@@ -56,12 +62,12 @@ NONVICTIM_IOU_THRESHOLD = 0.3
 resume_case_id = None
 resume_pair_id = None
 
-logging.basicConfig(filename=os.path.join(result_dir, "evaluate.log"), filemode="a", level=logging.INFO)
+logging.basicConfig(filename=os.path.join(result_dir, "evaluate_adv_car_side_8_non_victim.log"), filemode="a", level=logging.INFO, format="%(message)s")
 
 dataset = OPV2VDataset(root_path=os.path.join(data_root, "OPV2V"), mode="test")
 
 # CHANGE THE MODEL NAME HERE
-default_shift_model = "car_side"
+default_shift_model = "adv_car_side_8_non_victim"
 # CHANGE THE ATTACK DATASET HERE
 attack_dataset = "lidar_shift"
 # CHANGE THE PRECEPTION MODEL NAME
@@ -255,7 +261,7 @@ def attack_perception(attacker, case_id=None, case=None, pair_id=None, data_dir=
                 
                 # Visualization
                 dataset.load_feature(new_case, perception_feature)
-                draw_attack(attack, case, new_case, perception_model_name, current_frame_id=frame_id, mode="multi_frame", show=False, save=os.path.join(data_dir, "frame{}".format(frame_id), "{}.png".format(perception_name)))
+                draw_attack(attack, case, new_case, perception_model_name, default_shift_model, current_frame_id=frame_id, mode="multi_frame", show=False, save=os.path.join(data_dir, "frame{}".format(frame_id), "{}.png".format(perception_name)))
     else:
         # Visualization
         dataset.load_feature(new_case, attack_info)
@@ -278,7 +284,6 @@ def attack_evaluation(attacker, perception_name):
         ego_id = attack["attack_meta"]["ego_vehicle_id"]
         victim_id = attack["attack_meta"]["victim_vehicle_id"]
         # attacker_id = attack["attack_meta"]["attacker_vehicle_id"]
-        attacker_id = ego_id
         # attack_bbox = bbox_sensor_to_map(attack["attack_meta"]["bboxes"][-1], case[9][attacker_id]["lidar_pose"])
         # attack_bbox = bbox_map_to_sensor(attack_bbox, case[-1][ego_id]["lidar_pose"])
 
@@ -310,7 +315,8 @@ def attack_evaluation(attacker, perception_name):
                 logging.info(f"[INVALID] Frame {frame_id} is invalid.")
                 continue
 
-            attack_bbox = attack["attack_meta"]["bboxes"][frame_id]
+            attack_bbox = np.copy(attack["attack_meta"]["bboxes"][frame_id])
+            attack_bbox[3:6] = model_3d_examples[default_shift_model][3:6]
 
             feature_data = pickle_cache_load(os.path.join(feature_data_path, f"frame{frame_id}", "{}.pkl".format(perception_name)))
             pred_bboxes = feature_data[frame_id][ego_id]["pred_bboxes"]
@@ -337,7 +343,7 @@ def attack_evaluation(attacker, perception_name):
             elif attacker.name.startswith("lidar_remove") and max_iou[attack_id, frame_id, 1] == 0:
                 success_log[attack_id][frame_id] = True
             elif attacker.name.startswith("lidar_shift"):
-                if ego_id == victim_id and max_iou[attack_id, frame_id, 1] < VICTIM_IOU_THRESHOLD:
+                if ego_id == victim_id and max_iou[attack_id, frame_id, 1] <= VICTIM_IOU_THRESHOLD:
                     success_log[attack_id][frame_id] = True
                 elif ego_id != victim_id and max_iou[attack_id, frame_id, 1] >= NONVICTIM_IOU_THRESHOLD:
                     success_log[attack_id][frame_id] = True
@@ -383,6 +389,8 @@ def attack_evaluation(attacker, perception_name):
 
     # Calculate success rate by whether the ego vehicle is the victim.
     victim_success_ego = victim_total_ego = non_victim_success_ego = non_victim_total_ego = 0
+    victim_valid_frames = victim_success_frames = 0
+    non_victim_valid_frames = non_victim_success_frames = 0
     difficulty_stats = {}
     difficulty_levels = sorted(diff for diff in {attack["attack_meta"]["difficulty"] for attack in attacker.attack_list} if diff is not None)
     for difficulty in difficulty_levels:
@@ -398,7 +406,13 @@ def attack_evaluation(attacker, perception_name):
             "non_victim_success_rate": 0.0,
             "valid_frames_total": 0,
             "success_frames_total": 0,
+            "valid_frames_victim": 0,
+            "success_frames_victim": 0,
+            "valid_frames_non_victim": 0,
+            "success_frames_non_victim": 0,
             "frame_success_rate": 0.0,
+            "frame_success_rate_victim": 0.0,
+            "frame_success_rate_non_victim": 0.0,
         }
     for idx, attack in enumerate(attacker.attack_list):
         ego_id = attack["attack_meta"]["ego_vehicle_id"]
@@ -412,13 +426,21 @@ def attack_evaluation(attacker, perception_name):
         if is_victim:
             victim_total_ego += 1
             victim_success_ego += int(ego_success)
+            victim_valid_frames += valid_frames
+            victim_success_frames += frames_succeeded
             difficulty_stats[difficulty]["victim_total_ego"] += 1
             difficulty_stats[difficulty]["victim_success_ego"] += int(ego_success)
+            difficulty_stats[difficulty]["valid_frames_victim"] += valid_frames
+            difficulty_stats[difficulty]["success_frames_victim"] += frames_succeeded
         else:
             non_victim_total_ego += 1
             non_victim_success_ego += int(ego_success)
+            non_victim_valid_frames += valid_frames
+            non_victim_success_frames += frames_succeeded
             difficulty_stats[difficulty]["non_victim_total_ego"] += 1
             difficulty_stats[difficulty]["non_victim_success_ego"] += int(ego_success)
+            difficulty_stats[difficulty]["valid_frames_non_victim"] += valid_frames
+            difficulty_stats[difficulty]["success_frames_non_victim"] += frames_succeeded
         difficulty_stats[difficulty]["valid_frames_total"] += valid_frames
         difficulty_stats[difficulty]["success_frames_total"] += frames_succeeded
     victim_success_rate = victim_success_ego / victim_total_ego if victim_total_ego > 0 else 0.0
@@ -428,6 +450,8 @@ def attack_evaluation(attacker, perception_name):
     valid_frames_total = int(np.sum(valid_log))
     success_frames_total = int(np.sum(success_log & valid_log))
     frame_success_rate = success_frames_total / valid_frames_total if valid_frames_total > 0 else 0.0
+    frame_success_rate_victim = victim_success_frames / victim_valid_frames if victim_valid_frames > 0 else 0.0
+    frame_success_rate_non_victim = non_victim_success_frames / non_victim_valid_frames if non_victim_valid_frames > 0 else 0.0
 
     # Aggregate combination success rate by difficulty.
     for combination_result in combination_results:
@@ -445,6 +469,10 @@ def attack_evaluation(attacker, perception_name):
             stats["non_victim_success_rate"] = stats["non_victim_success_ego"] / stats["non_victim_total_ego"]
         if stats["valid_frames_total"] > 0:
             stats["frame_success_rate"] = stats["success_frames_total"] / stats["valid_frames_total"]
+        if stats["valid_frames_victim"] > 0:
+            stats["frame_success_rate_victim"] = stats["success_frames_victim"] / stats["valid_frames_victim"]
+        if stats["valid_frames_non_victim"] > 0:
+            stats["frame_success_rate_non_victim"] = stats["success_frames_non_victim"] / stats["valid_frames_non_victim"]
     
     # Save the evaluation results
     # pickle_cache_dump({"success": success_log, "iou": max_iou, "score": best_score},
@@ -459,6 +487,12 @@ def attack_evaluation(attacker, perception_name):
         "valid_frames_total": valid_frames_total,
         "success_frames_total": success_frames_total,
         "frame_success_rate": frame_success_rate,
+        "valid_frames_victim": victim_valid_frames,
+        "success_frames_victim": victim_success_frames,
+        "frame_success_rate_victim": frame_success_rate_victim,
+        "valid_frames_non_victim": non_victim_valid_frames,
+        "success_frames_non_victim": non_victim_success_frames,
+        "frame_success_rate_non_victim": frame_success_rate_non_victim,
         "victim_success_ego": victim_success_ego,
         "victim_total_ego": victim_total_ego,
         "victim_success_rate": victim_success_rate,
@@ -471,17 +505,27 @@ def attack_evaluation(attacker, perception_name):
     with open(save_path, "w") as f:
         json.dump(evaluation_results, f, indent=2)
 
-    logging.info("Evaluation of attack {} at perception {}, total cases {}, total valid frames {}, success frames {}, success rate {:.4f}, average IoU {:.4f}, average score {:.4f},".format(
-        attacker.name, perception_name, success_log.shape[0], valid_frames_total, success_frames_total, frame_success_rate, np.mean(max_iou[:, 1]), np.mean(best_score[:, 1])))
-    logging.info("Combination (case, pair): total {}, success {}, success rate {:.4f}".format(
-        combination_total, combination_success_count, combination_success_rate))
+    logging.info("Evaluation of attack {} at perception {}".format(
+        attacker.name, perception_name))
+    logging.info("Total cases: {}".format(
+        success_log.shape[0]))
+    logging.info("Total frame success: {}/{} ({:.4f})".format(
+        success_frames_total, valid_frames_total, frame_success_rate))
+    logging.info("Victim frame success: {}/{} ({:.4f})".format(
+        victim_success_frames, victim_valid_frames, frame_success_rate_victim))
+    logging.info("Non-victim frame success: {}/{} ({:.4f})".format(
+        non_victim_success_frames, non_victim_valid_frames, frame_success_rate_non_victim))
+    logging.info("Average IoU: {:.4f}, average score: {:.4f}".format(
+        np.mean(max_iou[:, 1]), np.mean(best_score[:, 1])))
+    logging.info("Combination (case, pair): {}/{} ({:.4f})".format(
+        combination_success_count, combination_total, combination_success_rate))
     logging.info("Victim and non-victim success: victim {}/{} ({:.4f}), non-victim {}/{} ({:.4f})".format(
         victim_success_ego, victim_total_ego, victim_success_rate,
         non_victim_success_ego, non_victim_total_ego, non_victim_success_rate))
     for difficulty in sorted(difficulty_stats):
         stats = difficulty_stats[difficulty]
         logging.info(
-            "Difficulty {}: combination {}/{} ({:.4f}), frame {}/{} ({:.4f}), victim {}/{} ({:.4f}), non-victim {}/{} ({:.4f})".format(
+            "Difficulty {}: combination {}/{} ({:.4f}), total frame {}/{} ({:.4f}), victim {}/{} ({:.4f}), non-victim {}/{} ({:.4f}), victim frame {}/{} ({:.4f}), non-victim frame {}/{} ({:.4f})".format(
                 difficulty,
                 stats["combination_success_count"],
                 stats["combination_total"],
@@ -495,6 +539,12 @@ def attack_evaluation(attacker, perception_name):
                 stats["non_victim_success_ego"],
                 stats["non_victim_total_ego"],
                 stats["non_victim_success_rate"],
+                stats["success_frames_victim"],
+                stats["valid_frames_victim"],
+                stats["frame_success_rate_victim"],
+                stats["success_frames_non_victim"],
+                stats["valid_frames_non_victim"],
+                stats["frame_success_rate_non_victim"],
             )
         )
 
