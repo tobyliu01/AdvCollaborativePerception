@@ -101,6 +101,34 @@ def save_ascii_ply_xyz(path: str, xyz_map: np.ndarray) -> str:
             f.write(f"{x:.6f} {y:.6f} {z:.6f}\n")
     return path
 
+
+def save_ascii_ply_xyzi(path: str, xyzi: np.ndarray) -> str:
+    """
+    Write an ASCII .ply with x y z intensity.
+    """
+    pts = np.asarray(xyzi, dtype=float)
+    if pts.ndim != 2 or pts.shape[1] < 3:
+        pts = np.zeros((0, 4), dtype=float)
+    if pts.shape[1] < 4:
+        intensity = np.ones((pts.shape[0], 1), dtype=float) * 0.1
+        pts = np.hstack([pts[:, :3], intensity])
+
+    n = pts.shape[0]
+    Path(os.path.dirname(path) or ".").mkdir(parents=True, exist_ok=True)
+    with open(path, "w") as f:
+        f.write("ply\n")
+        f.write("format ascii 1.0\n")
+        f.write(f"element vertex {n}\n")
+        f.write("property float x\n")
+        f.write("property float y\n")
+        f.write("property float z\n")
+        f.write("property float intensity\n")
+        f.write("end_header\n")
+        for i in range(n):
+            x, y, z, intensity = pts[i, :4]
+            f.write(f"{x:.6f} {y:.6f} {z:.6f} {intensity:.6f}\n")
+    return path
+
 def concat_xyz(list_of_xyz: List[np.ndarray]) -> np.ndarray:
     """
     Concatenate multiple (N_i, 3) arrays safely.

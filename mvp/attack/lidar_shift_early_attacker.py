@@ -69,6 +69,12 @@ class LidarShiftEarlyAttacker(Attacker):
             }
         """
         new_case = copy.deepcopy(single_vehicle_case)
+
+        def _zero_intensity(case_dict):
+            lidar = case_dict.get("lidar", None)
+            if lidar is not None and lidar.ndim == 2 and lidar.shape[1] >= 4:
+                lidar[:, 3] = 0.0
+
         ego_pcd = new_case["lidar"]
         try:
             if "object_index" in attack_opts:
@@ -85,6 +91,7 @@ class LidarShiftEarlyAttacker(Attacker):
             bbox_to_spoof[3:6] += 0.2
         except:
             print("Case {}, Pair {}, Frame {}, Ego vehicle {}, Object vehicle {}: The target object is not available.".format(attack_opts["case_id"], attack_opts["pair_id"], frame_id, attack_opts["ego_vehicle_id"], attack_opts["object_id"]))
+            _zero_intensity(new_case)
             return new_case, {}
 
         # Remove
@@ -95,6 +102,7 @@ class LidarShiftEarlyAttacker(Attacker):
         rays = np.hstack([np.zeros((len(point_indices), 3)), direction[point_indices]])
         if rays.shape[0] == 0:
             print("Case {}, Pair {}, Frame {}, Ego vehicle {}, Object vehicle {}: The removed object is not visible.".format(attack_opts["case_id"], attack_opts["pair_id"], frame_id, attack_opts["ego_vehicle_id"], attack_opts["object_id"]))
+            _zero_intensity(new_case)
             return new_case, {}
 
         plane_model, _ = get_ground_plane(ego_pcd, method="ransac")
@@ -111,6 +119,7 @@ class LidarShiftEarlyAttacker(Attacker):
         intersect_points = ray_intersection(meshes, rays)
         if intersect_points.shape[0] == 0:
             print("Case {}, Pair {}, Frame {}, Ego vehicle {}, Object vehicle {}: Ray tracing failed.".format(attack_opts["case_id"], attack_opts["pair_id"], frame_id, attack_opts["ego_vehicle_id"], attack_opts["object_id"]))
+            _zero_intensity(new_case)
             return new_case, {}
 
         index_mask = (intersect_points[:,0] ** 2 < 10000)
@@ -214,6 +223,7 @@ class LidarShiftEarlyAttacker(Attacker):
         final_replace_data = final_replace_data[final_replace_indices]
 
         new_case["lidar"] = ego_pcd
+        _zero_intensity(new_case)
         info = {
             "ignore_indices": ignore_indices,
             "replace_indices": final_replace_indices,

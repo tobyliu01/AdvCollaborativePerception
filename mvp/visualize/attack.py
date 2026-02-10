@@ -7,11 +7,11 @@ import matplotlib
 from .general import get_xylims
 from mvp.config import model_3d_examples
 from mvp.data.util import bbox_shift, bbox_rotate, pcd_sensor_to_map, bbox_sensor_to_map
-from mvp.visualize.lidar_3d_export import lidar_to_map_xyz, concat_xyz, save_ascii_ply_xyz
+from mvp.visualize.lidar_3d_export import lidar_to_map_xyz, concat_xyz, save_ascii_ply_xyzi
 from .general import draw_bbox_2d
 
 
-def draw_attack(attack, normal_case, attack_case, perception_model_name, current_frame_id, mode="multi_frame", show=False, save=None):
+def draw_attack(attack, normal_case, attack_case, perception_model_name, mesh_name, current_frame_id, mode="multi_frame", show=False, save=None):
     assert (perception_model_name in ["pixor", "pointpillar"])
     if mode == "multi_frame":
         frame_ids = [current_frame_id]
@@ -27,17 +27,11 @@ def draw_attack(attack, normal_case, attack_case, perception_model_name, current
                     ax = axes[frame_ids.index(frame_id)][idx]
 
                 # save 3d point clouds
-                xyz_list = []
                 ego_vehicle_id = attack["attack_meta"]["ego_vehicle_id"]
                 ego_vehicle_data = case[frame_id][ego_vehicle_id]
-                xyz_map = lidar_to_map_xyz(ego_vehicle_data["lidar"], ego_vehicle_data["lidar_pose"])
-                xyz_list.append(xyz_map)
-                # for vehicle_id, vehicle_data in case[frame_id].items():
-                #     xyz_map = lidar_to_map_xyz(vehicle_data["lidar"], vehicle_data["lidar_pose"])
-                #     xyz_list.append(xyz_map)
-                pointcloud_all = concat_xyz(xyz_list)
+                pointcloud_all = ego_vehicle_data["lidar"]
                 out_path = os.path.splitext(save)[0] + ".ply"
-                save_ascii_ply_xyz(out_path, pointcloud_all)
+                save_ascii_ply_xyzi(out_path, pointcloud_all)
                 
                 # pointcloud_all = np.vstack([pcd_sensor_to_map(vehicle_data["lidar"], vehicle_data["lidar_pose"])[:,:3] for vehicle_id, vehicle_data in case[frame_id].items()])  # Draw fused point cloud
                 pointcloud_all = pcd_sensor_to_map(ego_vehicle_data["lidar"], ego_vehicle_data["lidar_pose"])[:,:3]  # Draw ego point cloud
@@ -62,8 +56,9 @@ def draw_attack(attack, normal_case, attack_case, perception_model_name, current
                 
                 # label the position of replacement only in normal case
                 if idx == 0:
-                    # bbox = attack["attack_meta"]["bboxes"][frame_ids.index(frame_id)]
-                    bbox = attack["attack_meta"]["bboxes"][frame_id]
+                    bbox = np.copy(attack["attack_meta"]["bboxes"][frame_id])
+                    assert(mesh_name in model_3d_examples)
+                    bbox[3:6] = model_3d_examples[mesh_name][3:6]
                     bbox = bbox_sensor_to_map(bbox, ego_vehicle_data["lidar_pose"])
                     total_bboxes.append((bbox[None,:], None, 'red'))
 
