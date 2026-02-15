@@ -8,7 +8,7 @@ import numpy as np
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Generate lidar spoof attack config from test_attacks_unique.pkl")
-    parser.add_argument("--attacks", type=Path, default=Path("test_attacks_unique.pkl"), help="Source attacks PKL")
+    parser.add_argument("--attacks", type=Path, default=Path("test_attacks.pkl"), help="Source attacks PKL")
     parser.add_argument("--output", type=Path, default=Path("lidar_shift_new.pkl"), help="Destination PKL")
     parser.add_argument("--datadir", type=Path, default=Path("/workspace/hdd/datasets/yutongl/AdvCollaborativePerception/data/OPV2V"), help="Dataset root containing split PKL files")
     parser.add_argument("--dataset", choices=["train", "validate", "test"], default="test", help="Dataset split to load")
@@ -52,10 +52,11 @@ def bbox_map_to_sensor(bbox: np.ndarray, sensor_calib: np.ndarray) -> np.ndarray
 
 
 def rotate_bbox_toward_target(bbox_sensor: np.ndarray, target_xy_sensor: np.ndarray) -> np.ndarray:
-    """Rotate bbox yaw so it faces the target position (already in ego frame)."""
+    """Rotate bbox yaw so its rear side faces the target position."""
     rotated = np.copy(bbox_sensor)
     vec_to_target = target_xy_sensor - rotated[:2]
-    rotated[6] = np.arctan2(vec_to_target[1], vec_to_target[0])
+    yaw_to_target = np.arctan2(vec_to_target[1], vec_to_target[0])
+    rotated[6] = np.arctan2(np.sin(yaw_to_target + np.pi), np.cos(yaw_to_target + np.pi))
     return rotated
 
 

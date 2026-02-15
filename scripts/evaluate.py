@@ -5,7 +5,7 @@ Checklist before every run:
 3. default_shift_model
 4. IoU threshold
 
-nohup python evaluate.py > ../console_19.log 2>&1 &
+nohup python evaluate.py > ../console_14.log 2>&1 &
 
 Evaluation result structure:
 result/attack/model_name/case_id/pair_id/vehicle_id/frame_id & attack_info.pkl/
@@ -62,12 +62,12 @@ NONVICTIM_IOU_THRESHOLD = 0.3
 resume_case_id = None
 resume_pair_id = None
 
-logging.basicConfig(filename=os.path.join(result_dir, "evaluate_adv_car_side_8_non_victim.log"), filemode="a", level=logging.INFO, format="%(message)s")
+logging.basicConfig(filename=os.path.join(result_dir, "evaluate_adv_real_car_with_plane_victim_new1.log"), filemode="a", level=logging.INFO, format="%(message)s")
 
 dataset = OPV2VDataset(root_path=os.path.join(data_root, "OPV2V"), mode="test")
 
 # CHANGE THE MODEL NAME HERE
-default_shift_model = "adv_car_side_8_non_victim"
+default_shift_model = "adv_real_car_with_plane_victim_new1"
 # CHANGE THE ATTACK DATASET HERE
 attack_dataset = "lidar_shift"
 # CHANGE THE PRECEPTION MODEL NAME
