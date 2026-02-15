@@ -268,7 +268,7 @@ def attack_perception(attacker, case_id=None, case=None, pair_id=None, data_dir=
         draw_attack(attack, case, new_case, mode="multi_frame", show=False, save=os.path.join(data_dir, "visualization.png"))
 
 
-def attack_evaluation(attacker, perception_name):
+def attack_evaluation_iou(attacker, perception_name):
     logging.info("Evaluating attack {} at perception {} on mesh model {}".format(attacker.name, perception_name, default_shift_model))
     case_number = len(attacker.attack_list)
     success_log = np.zeros((case_number, TOTAL_FRAMES)).astype(bool)
@@ -548,6 +548,8 @@ def attack_evaluation(attacker, perception_name):
             )
         )
 
+def attack_evaluation_defenses(attacker, perception_name, defense_name: str):
+
 
 @normal_case_iterator
 def occupancy_map(lidar_seg_api, case_id=None, case=None, data_dir=None):
@@ -601,133 +603,133 @@ def occupancy_map(lidar_seg_api, case_id=None, case=None, data_dir=None):
     pickle_cache_dump(occupancy_feature, save_file)
 
 
-@attack_case_iterator
-def defense(attacker, defender, perception_name, case_id=None, case=None, data_dir=None, attack_id=None, attack=None):
-    if "early" in attacker.name:
-        save_file = os.path.join(data_dir, "{}_{}.pkl".format(defender.name, perception_name))
-        vis_file = os.path.join(data_dir, "{}_{}.png".format(defender.name, perception_name))
-    else:
-        save_file = os.path.join(data_dir, "{}.pkl".format(defender.name))
-        vis_file = os.path.join(data_dir, "{}.png".format(defender.name))
-    if os.path.isfile(save_file):
-        return
-    else:
-        logging.info("Processing defense {} against attack {} on attack case {}".format(defender.name, attacker.name, attack_id))
-    logging.info("Processing defense {} against attack {} on attack case {}".format(defender.name, attacker.name, attack_id))
+# @attack_case_iterator
+# def defense(attacker, defender, perception_name, case_id=None, case=None, data_dir=None, attack_id=None, attack=None):
+#     if "early" in attacker.name:
+#         save_file = os.path.join(data_dir, "{}_{}.pkl".format(defender.name, perception_name))
+#         vis_file = os.path.join(data_dir, "{}_{}.png".format(defender.name, perception_name))
+#     else:
+#         save_file = os.path.join(data_dir, "{}.pkl".format(defender.name))
+#         vis_file = os.path.join(data_dir, "{}.png".format(defender.name))
+#     if os.path.isfile(save_file):
+#         return
+#     else:
+#         logging.info("Processing defense {} against attack {} on attack case {}".format(defender.name, attacker.name, attack_id))
+#     logging.info("Processing defense {} against attack {} on attack case {}".format(defender.name, attacker.name, attack_id))
 
-    if "early" in attacker.name:
-        perception_feature = pickle_cache_load(os.path.join(data_dir, "{}.pkl".format(perception_name)))
-    else:
-        perception_feature = pickle_cache_load(os.path.join(data_dir, "attack_info.pkl"))
-    case = dataset.load_feature(case, perception_feature)
+#     if "early" in attacker.name:
+#         perception_feature = pickle_cache_load(os.path.join(data_dir, "{}.pkl".format(perception_name)))
+#     else:
+#         perception_feature = pickle_cache_load(os.path.join(data_dir, "attack_info.pkl"))
+#     case = dataset.load_feature(case, perception_feature)
 
-    occupancy_feature = pickle_cache_load(os.path.join(result_dir, "normal/{:06d}/occupancy_map.pkl".format(case_id)))
-    case = dataset.load_feature(case, occupancy_feature)
+#     occupancy_feature = pickle_cache_load(os.path.join(result_dir, "normal/{:06d}/occupancy_map.pkl".format(case_id)))
+#     case = dataset.load_feature(case, occupancy_feature)
 
-    defend_opts = {"frame_ids": [9]}
-    new_case, score, metrics = defender.run(case, defend_opts)
+#     defend_opts = {"frame_ids": [9]}
+#     new_case, score, metrics = defender.run(case, defend_opts)
 
-    pickle_cache_dump(metrics, save_file)
-    visualize_defense(case, metrics, show=False, save=vis_file)
+#     pickle_cache_dump(metrics, save_file)
+#     visualize_defense(case, metrics, show=False, save=vis_file)
 
 
-def defense_evaluation(attacker, defender, perception_name):
-    save_dir = os.path.join(result_dir, "evaluation")
-    os.makedirs(save_dir, exist_ok=True)
-    save_file = os.path.join(save_dir, "defense_result_{}_{}_{}.pkl".format(attacker.name, defender.name, perception_name))
+# def defense_evaluation(attacker, defender, perception_name):
+#     save_dir = os.path.join(result_dir, "evaluation")
+#     os.makedirs(save_dir, exist_ok=True)
+#     save_file = os.path.join(save_dir, "defense_result_{}_{}_{}.pkl".format(attacker.name, defender.name, perception_name))
 
-    defense_results = {
-        "spoof_error": [],
-        "spoof_label": [],
-        "spoof_location": [],
-        "remove_error": [],
-        "remove_label": [],
-        "remove_location": [],
-        "success": [],
-    }
+#     defense_results = {
+#         "spoof_error": [],
+#         "spoof_label": [],
+#         "spoof_location": [],
+#         "remove_error": [],
+#         "remove_label": [],
+#         "remove_location": [],
+#         "success": [],
+#     }
 
-    @attack_case_iterator
-    def defense_evaluation_processor(attacker, defender, perception_name, case_id=None, case=None, data_dir=None, attack_id=None, attack=None, iou_thres=0.7, dist_thres=40):
-        if "early" in attacker.name:
-            defense_file = os.path.join(data_dir, "{}_{}.pkl".format(defender.name, perception_name))
-        else:
-            defense_file = os.path.join(data_dir, "{}.pkl".format(defender.name))
-        metrics = pickle_cache_load(defense_file)
+#     @attack_case_iterator
+#     def defense_evaluation_processor(attacker, defender, perception_name, case_id=None, case=None, data_dir=None, attack_id=None, attack=None, iou_thres=0.7, dist_thres=40):
+#         if "early" in attacker.name:
+#             defense_file = os.path.join(data_dir, "{}_{}.pkl".format(defender.name, perception_name))
+#         else:
+#             defense_file = os.path.join(data_dir, "{}.pkl".format(defender.name))
+#         metrics = pickle_cache_load(defense_file)
 
-        attacker_vehicle_id = attack["attack_meta"]["attacker_vehicle_id"]
-        victim_vehicle_id = attack["attack_meta"]["victim_vehicle_id"]
-        attack_mode =  "spoof" if "spoof" in attacker.name else "remove"
-        attack_bbox = bbox_sensor_to_map(attack["attack_meta"]["bboxes"][-1], case[-1][attacker_vehicle_id]["lidar_pose"])
+#         attacker_vehicle_id = attack["attack_meta"]["attacker_vehicle_id"]
+#         victim_vehicle_id = attack["attack_meta"]["victim_vehicle_id"]
+#         attack_mode =  "spoof" if "spoof" in attacker.name else "remove"
+#         attack_bbox = bbox_sensor_to_map(attack["attack_meta"]["bboxes"][-1], case[-1][attacker_vehicle_id]["lidar_pose"])
 
-        victim_vehicle_id = attack["attack_meta"]["victim_vehicle_id"]
-        for frame_id in attack_frame_ids:
-            vehicle_metrics = metrics[frame_id][victim_vehicle_id]
+#         victim_vehicle_id = attack["attack_meta"]["victim_vehicle_id"]
+#         for frame_id in attack_frame_ids:
+#             vehicle_metrics = metrics[frame_id][victim_vehicle_id]
 
-        gt_bboxes = vehicle_metrics["gt_bboxes"]
-        pred_bboxes = vehicle_metrics["pred_bboxes"]
-        lidar_pose = vehicle_metrics["lidar_pose"]
+#         gt_bboxes = vehicle_metrics["gt_bboxes"]
+#         pred_bboxes = vehicle_metrics["pred_bboxes"]
+#         lidar_pose = vehicle_metrics["lidar_pose"]
 
-        # iou 2d
-        gt_bboxes[:, 2] = 0
-        gt_bboxes[:, 5] = 1
-        pred_bboxes[:, 2] = 0
-        pred_bboxes[:, 5] = 1
+#         # iou 2d
+#         gt_bboxes[:, 2] = 0
+#         gt_bboxes[:, 5] = 1
+#         pred_bboxes[:, 2] = 0
+#         pred_bboxes[:, 5] = 1
 
-        iou = np.zeros((gt_bboxes.shape[0], pred_bboxes.shape[0]))
-        for i, gt_bbox in enumerate(gt_bboxes):
-            for j, pred_bbox in enumerate(pred_bboxes):
-                iou[i, j] = iou3d(gt_bbox, pred_bbox)
+#         iou = np.zeros((gt_bboxes.shape[0], pred_bboxes.shape[0]))
+#         for i, gt_bbox in enumerate(gt_bboxes):
+#             for j, pred_bbox in enumerate(pred_bboxes):
+#                 iou[i, j] = iou3d(gt_bbox, pred_bbox)
 
-        spoof_label = np.max(iou, axis=0) <= iou_thres
-        spoof_mask = np.logical_and(get_distance(pred_bboxes[:, :2], lidar_pose[:2]) > 1, get_distance(pred_bboxes[:, :2], lidar_pose[:2]) <= dist_thres)
-        remove_label = np.max(iou, axis=1) <= iou_thres
-        remove_mask = get_distance(gt_bboxes[:, :2], lidar_pose[:2]) <= dist_thres
+#         spoof_label = np.max(iou, axis=0) <= iou_thres
+#         spoof_mask = np.logical_and(get_distance(pred_bboxes[:, :2], lidar_pose[:2]) > 1, get_distance(pred_bboxes[:, :2], lidar_pose[:2]) <= dist_thres)
+#         remove_label = np.max(iou, axis=1) <= iou_thres
+#         remove_mask = get_distance(gt_bboxes[:, :2], lidar_pose[:2]) <= dist_thres
 
-        spoof_error = np.zeros(pred_bboxes.shape[0])
-        spoof_location = np.zeros((pred_bboxes.shape[0], 2))
-        for error_area, error, gt_error, bbox_index in vehicle_metrics["spoof"]:
-            if error > spoof_error[bbox_index]:
-                spoof_location[bbox_index] = np.array(list(list(error_area.centroid.coords)[0]))
-                spoof_error[bbox_index] = error
+#         spoof_error = np.zeros(pred_bboxes.shape[0])
+#         spoof_location = np.zeros((pred_bboxes.shape[0], 2))
+#         for error_area, error, gt_error, bbox_index in vehicle_metrics["spoof"]:
+#             if error > spoof_error[bbox_index]:
+#                 spoof_location[bbox_index] = np.array(list(list(error_area.centroid.coords)[0]))
+#                 spoof_error[bbox_index] = error
 
-        remove_error = np.zeros(gt_bboxes.shape[0])
-        remove_location = np.zeros((gt_bboxes.shape[0], 2))
-        for error_area, error, gt_error, bbox_index in vehicle_metrics["remove"]:
-            if bbox_index < 0:
-                continue
-            if error > remove_error[bbox_index]:
-                remove_location[bbox_index] = np.array(list(list(error_area.centroid.coords)[0]))
-                remove_error[bbox_index] = error
+#         remove_error = np.zeros(gt_bboxes.shape[0])
+#         remove_location = np.zeros((gt_bboxes.shape[0], 2))
+#         for error_area, error, gt_error, bbox_index in vehicle_metrics["remove"]:
+#             if bbox_index < 0:
+#                 continue
+#             if error > remove_error[bbox_index]:
+#                 remove_location[bbox_index] = np.array(list(list(error_area.centroid.coords)[0]))
+#                 remove_error[bbox_index] = error
 
-        detected_location = spoof_location if attack_mode == "spoof" else remove_location
-        is_success = np.min(get_distance(detected_location, attack_bbox[:2])) < 2
+#         detected_location = spoof_location if attack_mode == "spoof" else remove_location
+#         is_success = np.min(get_distance(detected_location, attack_bbox[:2])) < 2
 
-        defense_results["spoof_error"].append(spoof_error[spoof_mask])
-        defense_results["spoof_label"].append(spoof_label[spoof_mask])
-        defense_results["spoof_location"].append(spoof_location[spoof_mask])
-        defense_results["remove_error"].append(remove_error[remove_mask])
-        defense_results["remove_label"].append(remove_label[remove_mask])
-        defense_results["remove_location"].append(remove_location[remove_mask])
-        defense_results["success"].append(np.array([is_success]).astype(np.int8))
+#         defense_results["spoof_error"].append(spoof_error[spoof_mask])
+#         defense_results["spoof_label"].append(spoof_label[spoof_mask])
+#         defense_results["spoof_location"].append(spoof_location[spoof_mask])
+#         defense_results["remove_error"].append(remove_error[remove_mask])
+#         defense_results["remove_label"].append(remove_label[remove_mask])
+#         defense_results["remove_location"].append(remove_location[remove_mask])
+#         defense_results["success"].append(np.array([is_success]).astype(np.int8))
 
-    defense_evaluation_processor(attacker, defender, perception_name)
+#     defense_evaluation_processor(attacker, defender, perception_name)
 
-    for key, data in defense_results.items():
-        defense_results[key] = np.concatenate(data).reshape(-1)
+#     for key, data in defense_results.items():
+#         defense_results[key] = np.concatenate(data).reshape(-1)
 
-    pickle_cache_dump(defense_results, save_file)
-    spoof_best_TPR, spoof_best_FPR, spoof_roc_auc, spoof_best_thres = draw_roc(defense_results["spoof_error"], defense_results["spoof_label"],
-            save=os.path.join(save_dir, "roc_lidar_spoof_{}_{}_{}.png".format(attacker.name, defender.name, perception_name)))
-    remove_best_TPR, remove_best_FPR, remove_roc_auc, remove_best_thres = draw_roc(defense_results["remove_error"], defense_results["remove_label"],
-            save=os.path.join(save_dir, "roc_lidar_remove_{}_{}_{}.png".format(attacker.name, defender.name, perception_name)))
+#     pickle_cache_dump(defense_results, save_file)
+#     spoof_best_TPR, spoof_best_FPR, spoof_roc_auc, spoof_best_thres = draw_roc(defense_results["spoof_error"], defense_results["spoof_label"],
+#             save=os.path.join(save_dir, "roc_lidar_spoof_{}_{}_{}.png".format(attacker.name, defender.name, perception_name)))
+#     remove_best_TPR, remove_best_FPR, remove_roc_auc, remove_best_thres = draw_roc(defense_results["remove_error"], defense_results["remove_label"],
+#             save=os.path.join(save_dir, "roc_lidar_remove_{}_{}_{}.png".format(attacker.name, defender.name, perception_name)))
     
-    attack_result = pickle_cache_load(os.path.join(save_dir, "attack_result_{}_{}.pkl".format(attacker.name, perception_name)))
-    success_rate = np.mean(attack_result["success"] * defense_results["success"])
+#     attack_result = pickle_cache_load(os.path.join(save_dir, "attack_result_{}_{}.pkl".format(attacker.name, perception_name)))
+#     success_rate = np.mean(attack_result["success"] * defense_results["success"])
     
-    logging.info("Evaluation of defense {} against attack {} on perception {} success rate {:.2f}: For spoofing attack, best TPR {:.2f}, best FPR {:.2f}, ROC AUC {:.2f}, best threshold {:.2f}; For removal attack, best TPR {:.2f}, best FPR {:.2f}, ROC AUC {:.2f}, best threshold {:.2f}." .format(
-        defender.name, attacker.name, perception_name, success_rate,
-        spoof_best_TPR, spoof_best_FPR, spoof_roc_auc, spoof_best_thres, remove_best_TPR, remove_best_FPR, remove_roc_auc, remove_best_thres
-    ))
+#     logging.info("Evaluation of defense {} against attack {} on perception {} success rate {:.2f}: For spoofing attack, best TPR {:.2f}, best FPR {:.2f}, ROC AUC {:.2f}, best threshold {:.2f}; For removal attack, best TPR {:.2f}, best FPR {:.2f}, ROC AUC {:.2f}, best threshold {:.2f}." .format(
+#         defender.name, attacker.name, perception_name, success_rate,
+#         spoof_best_TPR, spoof_best_FPR, spoof_roc_auc, spoof_best_thres, remove_best_TPR, remove_best_FPR, remove_roc_auc, remove_best_thres
+#     ))
 
 
 def main():
@@ -743,7 +745,8 @@ def main():
             print("######################## Run evaluation ########################")
             # for perception_name in ["pointpillar_early", "pointpillar_intermediate"]:
             for perception_name in [f"{perception_model_name}_early"]:
-                attack_evaluation(attacker, perception_name)
+                attack_evaluation_iou(attacker, perception_name)
+                attack_evaluation_defenses(attacker, perception_name, "mate")
         # else:
         #     attack_evaluation(attacker, attacker.perception.name)
     
