@@ -10,11 +10,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict, Hashable, List, Optional
+from typing import Any, Dict, Hashable, List, Optional
 
 import numpy as np
 
-from .association import TrackIdManager, jvc_distance_assignment
+from .association import jvc_distance_assignment
 from .trust import BetaTrustState
 from .types import (
     AgentId,
@@ -25,10 +25,10 @@ from .types import (
     ScenarioTrustResult,
     TrackId,
 )
-from .visibility import RangeVisibilityModel, VisibilityModel
+from .visibility import RangeVisibilityModel
 
 
-@dataclass(slots=True)
+@dataclass
 class MATEConfig:
     # Step 0: priors
     # prior_agent_alpha/beta: initial trust prior for each agent, Beta(alpha, beta)
@@ -57,12 +57,9 @@ class MATEConfig:
     # assignment_distance_m: max center-distance to accept a pred<->GT/AGG match.
     # Default 2.0m follows common tracking thresholding (also used in paper metrics appendix).
     assignment_distance_m: float = 2.0
-    # gt_temporal_match_distance_m: threshold for linking GT boxes across frames when GT ids are missing.
-    # Implementation utility (not a paper parameter).
-    gt_temporal_match_distance_m: float = 2.5
     # fallback_visibility_range_m/fov_deg: simple FOV model used if ray-traced FOV is unavailable.
     # Paper uses dynamic FOV from LiDAR ray tracing; this fallback is implementation-specific.
-    fallback_visibility_range_m: float = 70.0
+    fallback_visibility_range_m: float = 120.0
     fallback_visibility_fov_deg: float = 360.0
 
     # Step 3: weighted Beta update
@@ -82,7 +79,7 @@ class MATEConfig:
     min_psm_confidence: float = 0.05
 
 
-@dataclass(slots=True)
+@dataclass
 class _FrameAssociation:
     matched_track_ids: List[TrackId]
     missed_track_ids_in_fov: List[TrackId]
@@ -100,7 +97,7 @@ class MATEEstimator:
         self,
         config: Optional[MATEConfig] = None,
         box_transform: Optional[BoxTransformFn] = None,
-        visibility_model: Optional[VisibilityModel] = None,
+        visibility_model: Optional[Any] = None,
     ):
         self.config = config or MATEConfig()
         self.box_transform = box_transform
@@ -119,10 +116,6 @@ class MATEEstimator:
         agent_trust_history: Dict[AgentId, List[float]] = {}
         track_trust_history: Dict[TrackId, List[float]] = {}
 
-        gt_track_id_manager = TrackIdManager(
-            match_distance_m=self.config.gt_temporal_match_distance_m
-        )
-
         all_agent_ids = self._all_agent_ids(scenario)
         for agent_id in all_agent_ids:
             agent_states[agent_id] = self._new_agent_state()
@@ -136,11 +129,7 @@ class MATEEstimator:
                 self._propagate(state)
 
             gt_boxes = self._as_boxes(frame.gt_bboxes)
-            gt_track_ids = gt_track_id_manager.assign(
-                frame_idx=frame_idx,
-                gt_boxes=gt_boxes,
-                gt_ids=frame.gt_ids,
-            )
+            gt_track_ids = self._frame_gt_track_ids(frame)
             for tid in gt_track_ids.tolist():
                 int_tid = int(tid)
                 if int_tid not in track_states:
@@ -149,7 +138,7 @@ class MATEEstimator:
 
             frame_assoc = self._build_frame_associations(frame_idx, frame.cavs, gt_boxes, gt_track_ids)
 
-            # Eq. (6), first conditional: update track trust from agent trust.
+            # Update track trust from agent trust.
             track_psms = self._build_track_psms(frame_assoc, agent_states)
             for track_id, psms in track_psms.items():
                 track_states[track_id].update_from_psms(
@@ -158,7 +147,7 @@ class MATEEstimator:
                     negativity_threshold=self.config.track_negativity_threshold,
                 )
 
-            # Eq. (6), second conditional: update agent trust from (updated) track trust.
+            # Update agent trust from (updated) track trust.
             agent_psms = self._build_agent_psms(frame_assoc, track_states)
             for agent_id, psms in agent_psms.items():
                 agent_states[agent_id].update_from_psms(
@@ -211,11 +200,21 @@ class MATEEstimator:
             for _, gt_idx in assignment.matched_pairs:
                 matched_track_ids.append(int(gt_track_ids[gt_idx]))
 
+            visible_gt_ids = None
+            if cav.visible_gt_ids is not None:
+                try:
+                    visible_gt_ids = set(np.asarray(cav.visible_gt_ids, dtype=np.int64).tolist())
+                except Exception:
+                    visible_gt_ids = None
+
             missed_track_ids_in_fov: List[TrackId] = []
             for gt_idx in assignment.unmatched_right:
+                track_id = int(gt_track_ids[gt_idx])
+                if visible_gt_ids is not None and track_id not in visible_gt_ids:
+                    continue
                 gt_box = gt_boxes[gt_idx]
                 if self.visibility_model.is_visible(cav, gt_box, frame_idx):
-                    missed_track_ids_in_fov.append(int(gt_track_ids[gt_idx]))
+                    missed_track_ids_in_fov.append(track_id)
 
             unmatched_scores = (
                 pred_scores[np.array(assignment.unmatched_left, dtype=np.int64)]
@@ -309,6 +308,25 @@ class MATEEstimator:
         m = min(n_preds, scores.shape[0])
         resized[:m] = scores[:m]
         return resized
+
+    @staticmethod
+    def _frame_gt_track_ids(frame) -> np.ndarray:
+        gt_boxes = np.asarray(frame.gt_bboxes, dtype=np.float32)
+        n_gt = int(gt_boxes.shape[0]) if gt_boxes.ndim == 2 else 0
+        if n_gt == 0:
+            return np.empty((0,), dtype=np.int64)
+        if frame.gt_ids is None:
+            raise ValueError(
+                "frame.gt_ids is required when GT boxes are present; manual temporal GT tracking is disabled."
+            )
+        gt_ids = np.asarray(frame.gt_ids, dtype=np.int64).reshape(-1)
+        if gt_ids.shape[0] != n_gt:
+            raise ValueError(
+                "gt_ids length {} does not match number of GT boxes {}.".format(
+                    gt_ids.shape[0], n_gt
+                )
+            )
+        return gt_ids
 
     def _new_agent_state(self) -> BetaTrustState:
         return BetaTrustState(

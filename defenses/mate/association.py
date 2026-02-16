@@ -20,7 +20,7 @@ def pairwise_l2_cost(lhs: np.ndarray, rhs: np.ndarray) -> np.ndarray:
     return np.linalg.norm(d, axis=-1)
 
 
-@dataclass(slots=True)
+@dataclass
 class AssignmentResult:
     matched_pairs: List[Tuple[int, int]]
     unmatched_left: List[int]
@@ -65,8 +65,6 @@ def jvc_distance_assignment(
     return AssignmentResult(matched_pairs, unmatched_left, unmatched_right)
 
 
-# Backward-compatible alias.
-# hungarian_distance_assignment = jvc_distance_assignment
 
 
 class TrackIdManager:

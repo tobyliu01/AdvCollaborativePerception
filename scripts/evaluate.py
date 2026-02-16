@@ -47,6 +47,7 @@ from mvp.attack.lidar_remove_early_attacker import LidarRemoveEarlyAttacker
 from mvp.attack.lidar_remove_intermediate_attacker import LidarRemoveIntermediateAttacker
 from mvp.attack.lidar_remove_late_attacker import LidarRemoveLateAttacker
 from mvp.defense.perception_defender import PerceptionDefender
+from defenses.mate.run import run_mate_attack_evaluation
 
 result_dir = os.path.normpath("/workspace/hdd/datasets/yutongl/AdvCollaborativePerception/result")
 os.makedirs(result_dir, exist_ok=True)
@@ -62,12 +63,14 @@ NONVICTIM_IOU_THRESHOLD = 0.3
 resume_case_id = None
 resume_pair_id = None
 
-logging.basicConfig(filename=os.path.join(result_dir, "evaluate_adv_real_car_with_plane_victim_new1.log"), filemode="a", level=logging.INFO, format="%(message)s")
+# logging.basicConfig(filename=os.path.join(result_dir, "evaluate_adv_real_car_victim_alpha1.log"), filemode="a", level=logging.INFO, format="%(message)s")
+logging.basicConfig(filename=os.path.join(result_dir, "evaluate_real_car.log"), filemode="a", level=logging.INFO, format="%(message)s")
 
 dataset = OPV2VDataset(root_path=os.path.join(data_root, "OPV2V"), mode="test")
 
 # CHANGE THE MODEL NAME HERE
-default_shift_model = "adv_real_car_with_plane_victim_new1"
+# default_shift_model = "adv_real_car_victim_alpha1"
+default_shift_model = "real_car"
 # CHANGE THE ATTACK DATASET HERE
 attack_dataset = "lidar_shift"
 # CHANGE THE PRECEPTION MODEL NAME
@@ -549,6 +552,20 @@ def attack_evaluation_iou(attacker, perception_name):
         )
 
 def attack_evaluation_defenses(attacker, perception_name, defense_name: str):
+    if defense_name == "mate":
+        run_mate_attack_evaluation(
+            attacker=attacker,
+            dataset=dataset,
+            result_dir=result_dir,
+            perception_model_name=perception_model_name,
+            default_shift_model=default_shift_model,
+            perception_name=perception_name,
+            attack_frame_ids=attack_frame_ids,
+            pickle_cache_load=pickle_cache_load,
+            logger=logging,
+        )
+    else:
+        raise NotImplementedError("Only support MATE")
 
 
 @normal_case_iterator
@@ -738,14 +755,15 @@ def main():
     # normal_perception()
 
     # Launch all attacks.
-    logging.info("######################## Launching attacks ########################")
+    logging.info("######################## Run attacks ########################")
     for attacker_name, attacker in attacker_dict.items():
-        attack_perception(attacker)
+        # attack_perception(attacker)
         if "early" in attacker_name:
-            print("######################## Run evaluation ########################")
             # for perception_name in ["pointpillar_early", "pointpillar_intermediate"]:
             for perception_name in [f"{perception_model_name}_early"]:
-                attack_evaluation_iou(attacker, perception_name)
+                # logging.info("######################## Run IoU evaluation ########################")
+                # attack_evaluation_iou(attacker, perception_name)
+                logging.info("######################## Run defenses evaluation ########################")
                 attack_evaluation_defenses(attacker, perception_name, "mate")
         # else:
         #     attack_evaluation(attacker, attacker.perception.name)

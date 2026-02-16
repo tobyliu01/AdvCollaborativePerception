@@ -14,7 +14,7 @@ def _clip01(value: float) -> float:
     return value
 
 
-@dataclass(slots=True)
+@dataclass
 class BetaTrustState:
     """
     Beta(alpha, beta) trust state over [0, 1].

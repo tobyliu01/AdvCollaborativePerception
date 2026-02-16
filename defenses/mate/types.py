@@ -10,7 +10,7 @@ AgentId = Hashable
 TrackId = int
 
 
-@dataclass(slots=True)
+@dataclass
 class PSM:
     """Trust pseudomeasurement as (value, confidence), both in [0, 1]."""
 
@@ -19,21 +19,22 @@ class PSM:
     reason: str = ""
 
 
-@dataclass(slots=True)
+@dataclass
 class CAVFramePrediction:
     """
     Predictions for one CAV in one frame.
 
-    Boxes are expected in [x, y, z, l, w, h, yaw] format.
+    Boxes: [x, y, z, l, w, h, yaw]
     """
 
     pred_bboxes: np.ndarray
     pred_scores: Optional[np.ndarray] = None
     pose: Optional[np.ndarray] = None
+    visible_gt_ids: Optional[np.ndarray] = None  # Ground truth track IDs of this CAV in the current frame
     boxes_in_global: bool = False
 
 
-@dataclass(slots=True)
+@dataclass
 class FrameData:
     """One scenario frame with GT and all CAV predictions."""
 
@@ -43,7 +44,7 @@ class FrameData:
     gt_ids: Optional[np.ndarray] = None
 
 
-@dataclass(slots=True)
+@dataclass
 class ScenarioData:
     """One scenario containing all frames."""
 
@@ -51,7 +52,7 @@ class ScenarioData:
     frames: List[FrameData]
 
 
-@dataclass(slots=True)
+@dataclass
 class ScenarioTrustResult:
     """Outputs of MATE for one scenario."""
 

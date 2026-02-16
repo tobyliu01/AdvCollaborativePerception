@@ -2,29 +2,23 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from typing import Protocol
 
 import numpy as np
 
 from .types import CAVFramePrediction
 
 
-class VisibilityModel(Protocol):
-    def is_visible(self, cav: CAVFramePrediction, target_bbox: np.ndarray, frame_idx: int) -> bool:
-        ...
-
-
 def _wrap_to_pi(angle: float) -> float:
     return (angle + math.pi) % (2.0 * math.pi) - math.pi
 
 
-@dataclass(slots=True)
+@dataclass
 class RangeVisibilityModel:
     """
     Simple fallback FOV model when LiDAR ray-traced FOV polygons are unavailable.
     """
 
-    max_range_m: float = 70.0
+    max_range_m: float = 120.0
     horizontal_fov_deg: float = 360.0
 
     def is_visible(self, cav: CAVFramePrediction, target_bbox: np.ndarray, frame_idx: int) -> bool:
