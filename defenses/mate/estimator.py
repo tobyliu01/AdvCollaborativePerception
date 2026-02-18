@@ -18,7 +18,6 @@ from .association import jvc_distance_assignment
 from .trust import BetaTrustState
 from .types import (
     AgentId,
-    BoxTransformFn,
     CAVFramePrediction,
     PSM,
     ScenarioData,
@@ -89,14 +88,12 @@ class _FrameAssociation:
 class MATEEstimator:
     """
     Multi-Agent Trust Estimator implementation.
-
-    Expected input is per-frame GT boxes and per-CAV predictions.
     """
 
     def __init__(
         self,
         config: Optional[MATEConfig] = None,
-        box_transform: Optional[BoxTransformFn] = None,
+        box_transform: Optional[Any] = None,
         visibility_model: Optional[Any] = None,
     ):
         self.config = config or MATEConfig()
@@ -105,9 +102,6 @@ class MATEEstimator:
             max_range_m=self.config.fallback_visibility_range_m,
             horizontal_fov_deg=self.config.fallback_visibility_fov_deg,
         )
-
-    def run_scenarios(self, scenarios: List[ScenarioData]) -> Dict[str, ScenarioTrustResult]:
-        return {scenario.scenario_id: self.run_scenario(scenario) for scenario in scenarios}
 
     def run_scenario(self, scenario: ScenarioData) -> ScenarioTrustResult:
         agent_states: Dict[AgentId, BetaTrustState] = {}
@@ -239,11 +233,11 @@ class MATEEstimator:
             conf = self._bounded_conf(agent_mean)
             for track_id in assoc.matched_track_ids:
                 track_psms.setdefault(track_id, []).append(
-                    PSM(value=1.0, confidence=conf, reason="match")
+                    PSM(value=1.0, confidence=conf)
                 )
             for track_id in assoc.missed_track_ids_in_fov:
                 track_psms.setdefault(track_id, []).append(
-                    PSM(value=0.0, confidence=conf, reason="missed_in_fov")
+                    PSM(value=0.0, confidence=conf)
                 )
         return track_psms
 
@@ -261,7 +255,6 @@ class MATEEstimator:
                     PSM(
                         value=tstate.mean,
                         confidence=self._bounded_conf(1.0 - tstate.variance),
-                        reason="match_track_trust",
                     )
                 )
             for track_id in assoc.missed_track_ids_in_fov:
@@ -270,7 +263,6 @@ class MATEEstimator:
                     PSM(
                         value=1.0 - tstate.mean,
                         confidence=self._bounded_conf(1.0 - tstate.variance),
-                        reason="missed_track_inverse_trust",
                     )
                 )
             if self.config.penalize_unmatched_predictions:
@@ -279,7 +271,6 @@ class MATEEstimator:
                         PSM(
                             value=0.0,
                             confidence=self._bounded_conf(float(score)),
-                            reason="unmatched_prediction",
                         )
                     )
             agent_psms[agent_id] = psms
@@ -287,7 +278,7 @@ class MATEEstimator:
 
     def _to_global_boxes(self, agent_id: AgentId, frame_idx: int, cav: CAVFramePrediction) -> np.ndarray:
         pred_boxes = self._as_boxes(cav.pred_bboxes)
-        if cav.boxes_in_global:
+        if cav.bboxes_in_global:
             return pred_boxes
         if self.box_transform is None:
             raise ValueError(

@@ -81,16 +81,36 @@ def _load_agent_prediction(
     frame_id: int,
     agent_id: Any,
     pickle_cache_load: Callable[[str], Any],
+    logger: Any,
 ) -> tuple[np.ndarray, np.ndarray]:
     if not os.path.isfile(prediction_file):
+        logger.warning(
+            "Prediction file missing for CAV %s frame %02d: %s",
+            str(agent_id),
+            frame_id,
+            prediction_file,
+        )
         return np.empty((0, 7), dtype=np.float32), np.empty((0,), dtype=np.float32)
     payload = pickle_cache_load(prediction_file)
     frame_data = _frame_payload(payload, frame_id)
     agent_data = _dict_get(frame_data, agent_id, {})
     if not isinstance(agent_data, dict):
+        logger.warning(
+            "Prediction payload invalid for CAV %s frame %02d in file: %s",
+            str(agent_id),
+            frame_id,
+            prediction_file,
+        )
         return np.empty((0, 7), dtype=np.float32), np.empty((0,), dtype=np.float32)
     pred_boxes = _as_boxes(agent_data.get("pred_bboxes"))
     pred_scores = _align_scores(agent_data.get("pred_scores"), pred_boxes.shape[0])
+    if pred_boxes.shape[0] == 0:
+        logger.warning(
+            "Prediction empty for CAV %s frame %02d in file: %s",
+            str(agent_id),
+            frame_id,
+            prediction_file,
+        )
     return pred_boxes, pred_scores
 
 
@@ -102,13 +122,6 @@ def _frame_has_valid_attack(
     frame_data = _frame_payload(attack_info, frame_id)
     agent_info = _dict_get(frame_data, agent_id, {})
     return isinstance(agent_info, dict) and len(agent_info) > 0
-
-
-def _to_int_track_id(track_id: Any) -> Any:
-    try:
-        return int(track_id)
-    except Exception:
-        return None
 
 
 def run_mate_attack_evaluation(
@@ -129,25 +142,36 @@ def run_mate_attack_evaluation(
         default_shift_model,
     )
 
+    # Iterate all attack cases.
     combination_groups: OrderedDict[tuple[int, int], list[Any]] = OrderedDict()
-    for attack in attacker.attack_list:
-        meta = attack["attack_meta"]
-        case_id = int(meta["case_id"])
-        pair_id = int(meta["pair_id"])
+    for ego_attack in attacker.attack_list:
+        ego_meta = ego_attack["attack_meta"]
+        case_id = int(ego_meta["case_id"])
+        pair_id = int(ego_meta["pair_id"])
         if case_id not in DEBUG_CASE_IDS or pair_id not in DEBUG_PAIR_IDS:
             continue
         key = (case_id, pair_id)
-        combination_groups.setdefault(key, []).append(attack)
+        combination_groups.setdefault(key, []).append(ego_attack)
 
     if len(combination_groups) == 0:
         logger.warning("No attack combinations found for attacker %s.", attacker.name)
         return
 
     case_cache: dict[int, Any] = {}
-    mate_config = MATEConfig()
+    # Only penalize the adv object track.
+    mate_config = MATEConfig(
+        penalize_unmatched_predictions=False,
+    )
     mate_estimator = MATEEstimator(config=mate_config)
 
+    # Iterate all scenarios.
     for (case_id, pair_id), attack_group in combination_groups.items():
+        # Fetch necessary information of each pair.
+        pair_meta = attack_group[0]["attack_meta"]
+        victim_vehicle_id = pair_meta.get("victim_vehicle_id")
+        object_id = pair_meta.get("object_id")
+        target_track_id = int(object_id)
+
         try:
             if case_id not in case_cache:
                 case_cache[case_id] = dataset.get_case(
@@ -157,32 +181,40 @@ def run_mate_attack_evaluation(
                     use_camera=False,
                 )
             case = case_cache[case_id]
-        except Exception as exc:
+        except Exception as e:
             logger.warning(
                 "Skipping case %06d pair %02d: failed to load case (%s).",
                 case_id,
                 pair_id,
-                str(exc),
+                str(e),
             )
             continue
 
-        attack_by_ego: OrderedDict[Any, Any] = OrderedDict()
-        vehicle_id_order: OrderedDict[Any, None] = OrderedDict()
-        for attack in attack_group:
-            meta = attack["attack_meta"]
-            ego_id = meta["ego_vehicle_id"]
-            attack_by_ego.setdefault(ego_id, attack)
-            for vehicle_id in meta.get("vehicle_ids", []):
-                vehicle_id_order.setdefault(vehicle_id, None)
-            vehicle_id_order.setdefault(ego_id, None)
-        vehicle_ids = list(vehicle_id_order.keys())
+        if target_track_id is None:
+            logger.warning(
+                "Skipping case %06d pair %02d: invalid object_id %s.",
+                case_id,
+                pair_id,
+                str(object_id),
+            )
+            continue
 
+        # Fetch necessary information of each CAV in one pair.
+        attack_by_ego: OrderedDict[Any, Any] = OrderedDict()
+        for ego_attack in attack_group:
+            ego_meta = ego_attack["attack_meta"]
+            ego_id = ego_meta["ego_vehicle_id"]
+            attack_by_ego.setdefault(ego_id, ego_attack)
+        cav_ids = list(pair_meta.get("vehicle_ids", []))
+
+        # Build FrameData for each frame in one scenario and aggregate them into one list.
         scenario_frames: list[FrameData] = []
+        # Iterate all frames in this scenario.
         for frame_id in attack_frame_ids:
             if frame_id >= len(case):
                 continue
-
             frame_case = case[frame_id]
+
             if len(frame_case) == 0:
                 scenario_frames.append(
                     FrameData(
@@ -197,26 +229,30 @@ def run_mate_attack_evaluation(
             # Build an aggregator ground truth set in this frame as the union of all CAV ground truth IDs.
             aggregator_gt: OrderedDict[int, np.ndarray] = OrderedDict()
             cav_gt_ids_by_vehicle: dict[Any, list[int]] = {}
-            frame_vehicle_ids = sorted(frame_case.keys(), key=lambda x: str(x))
-            for frame_vehicle_id in frame_vehicle_ids:
-                frame_vehicle_data = frame_case[frame_vehicle_id]
+            frame_cav_ids = sorted(frame_case.keys(), key=lambda x: str(x))
+            # Iterate all CAVs in this frame.
+            for frame_cav_id in frame_cav_ids:
+                frame_vehicle_data = frame_case[frame_cav_id]
                 local_gt_bboxes_sensor = _as_boxes(frame_vehicle_data.get("gt_bboxes"))
                 local_object_ids = list(frame_vehicle_data.get("object_ids", []))
                 m = min(local_gt_bboxes_sensor.shape[0], len(local_object_ids))
                 if m <= 0:
-                    cav_gt_ids_by_vehicle[frame_vehicle_id] = []
+                    cav_gt_ids_by_vehicle[frame_cav_id] = []
                     continue
                 local_gt_bboxes_sensor = local_gt_bboxes_sensor[:m]
                 local_object_ids = local_object_ids[:m]
-                keep_mask = np.asarray(
-                    [str(obj_id) != str(frame_vehicle_id) for obj_id in local_object_ids],
+
+                # Remove ego vehicle ID from all track IDs.
+                ego_id_removal_mask = np.asarray(
+                    [str(obj_id) != str(frame_cav_id) for obj_id in local_object_ids],
                     dtype=bool,
                 )
-                local_gt_bboxes_sensor = local_gt_bboxes_sensor[keep_mask]
+                local_gt_bboxes_sensor = local_gt_bboxes_sensor[ego_id_removal_mask]
                 local_object_ids = [
-                    obj_id for obj_id, keep in zip(local_object_ids, keep_mask) if keep
+                    obj_id for obj_id, keep in zip(local_object_ids, ego_id_removal_mask) if keep
                 ]
 
+                # Transform bbox in local vehicle frame to map frame
                 frame_vehicle_pose = np.asarray(
                     frame_vehicle_data["lidar_pose"], dtype=np.float32
                 )
@@ -226,18 +262,18 @@ def run_mate_attack_evaluation(
                     else np.empty((0, 7), dtype=np.float32)
                 )
 
+                # Build a list of all track IDs of the current CAV. Also add the track ID and bbox in aggregator list.
                 cav_gt_ids: list[int] = []
                 for local_obj_id, local_gt_bbox_map in zip(local_object_ids, local_gt_bboxes_map):
-                    int_track_id = _to_int_track_id(local_obj_id)
-                    if int_track_id is None:
-                        continue
-                    cav_gt_ids.append(int_track_id)
-                    if int_track_id not in aggregator_gt:
-                        aggregator_gt[int_track_id] = local_gt_bbox_map
-                cav_gt_ids_by_vehicle[frame_vehicle_id] = list(
+                    local_object_id = int(local_obj_id)
+                    cav_gt_ids.append(local_object_id)
+                    if local_object_id not in aggregator_gt:
+                        aggregator_gt[local_object_id] = local_gt_bbox_map
+                cav_gt_ids_by_vehicle[frame_cav_id] = list(
                     OrderedDict((x, None) for x in cav_gt_ids).keys()
                 )
 
+            # Remove duplicated track IDs in the aggregator.
             if len(aggregator_gt) > 0:
                 gt_ids = np.asarray(list(aggregator_gt.keys()), dtype=np.int64)
                 gt_bboxes_map = np.stack(list(aggregator_gt.values()), axis=0).astype(np.float32)
@@ -245,14 +281,35 @@ def run_mate_attack_evaluation(
                 gt_ids = np.empty((0,), dtype=np.int64)
                 gt_bboxes_map = np.empty((0, 7), dtype=np.float32)
 
+            # **********IMPORTANT: only evaluate the attack target track.**********
+            target_mask = gt_ids == target_track_id
+            if np.any(target_mask):
+                target_gt_ids = gt_ids[target_mask]
+                target_gt_bboxes_map = gt_bboxes_map[target_mask]
+            else:
+                logger.warning(
+                    "Target track %s not found in aggregator ground truth at case %06d pair %02d frame %02d.",
+                    str(target_track_id),
+                    case_id,
+                    pair_id,
+                    frame_id,
+                )
+                target_gt_ids = np.empty((0,), dtype=np.int64)
+                target_gt_bboxes_map = np.empty((0, 7), dtype=np.float32)
+
             cavs: dict[Any, CAVFramePrediction] = {}
-            for vehicle_id in vehicle_ids:
-                gt_track_ids_list = cav_gt_ids_by_vehicle.get(vehicle_id, [])
-                cav_gt_ids_set = set(gt_track_ids_list)
+            # Iterate all CAVs in this frame.
+            for cav_id in cav_ids:
+                gt_track_ids_list = cav_gt_ids_by_vehicle.get(cav_id, [])
+                gt_track_ids_set = set(gt_track_ids_list)
                 aggregator_gt_ids_list = [int(x) for x in gt_ids.tolist()]
                 debug_payload = {
+                    "target_track_id": target_track_id,
                     "gt_track_ids": gt_track_ids_list,
                     "aggregator_gt_ids": aggregator_gt_ids_list,
+                    "target_in_aggregator": bool(np.any(target_mask)),
+                    "target_in_cav_gt": bool(target_track_id in gt_track_ids_set),
+                    "unmatched_pred_used_for_trust": bool(mate_config.penalize_unmatched_predictions),
                     "matched_track_ids": [],
                     "matched_pairs": [],
                     "unmatched_pred_indices": [],
@@ -263,29 +320,37 @@ def run_mate_attack_evaluation(
                     "status": "ok",
                 }
 
-                if vehicle_id not in frame_case:
-                    debug_payload["status"] = "vehicle_missing_in_frame"
-                    logger.info(
-                        "[MATE_DEBUG] case %06d pair %02d frame %02d cav %s matches: %s",
+                # Handle dataset exceptions.
+                if cav_id not in frame_case:
+                    logger.warning(
+                        "CAV %s not found in case %06d pair %02d frame %02d.",
+                        str(cav_id),
                         case_id,
                         pair_id,
                         frame_id,
-                        str(vehicle_id),
-                        json.dumps(debug_payload, sort_keys=True),
                     )
                     continue
-                if attack_by_ego.get(vehicle_id) is None:
-                    debug_payload["status"] = "vehicle_not_in_attack_group"
-                    logger.info(
-                        "[MATE_DEBUG] case %06d pair %02d frame %02d cav %s matches: %s",
+                if attack_by_ego.get(cav_id) is None:
+                    logger.warning(
+                        "CAV %s has no attack entry in case %06d pair %02d frame %02d.",
+                        str(cav_id),
                         case_id,
                         pair_id,
                         frame_id,
-                        str(vehicle_id),
-                        json.dumps(debug_payload, sort_keys=True),
+                    )
+                    continue
+                if target_track_id not in gt_track_ids_set:
+                    logger.warning(
+                        "Target track %s not in CAV %s ground truth list at case %06d pair %02d frame %02d.",
+                        str(target_track_id),
+                        str(cav_id),
+                        case_id,
+                        pair_id,
+                        frame_id,
                     )
                     continue
 
+                # Fetch the lidar point attack info and test if it's a valid attack.
                 vehicle_dir = os.path.join(
                     result_dir,
                     "attack/{}/{}/case{:06d}/pair{:02d}/{}".format(
@@ -293,35 +358,31 @@ def run_mate_attack_evaluation(
                         default_shift_model,
                         case_id,
                         pair_id,
-                        str(vehicle_id),
+                        str(cav_id),
                     ),
                 )
                 attack_info_file = os.path.join(vehicle_dir, "attack_info.pkl")
                 if not os.path.isfile(attack_info_file):
-                    debug_payload["status"] = "missing_attack_info_file"
-                    logger.info(
-                        "[MATE_DEBUG] case %06d pair %02d frame %02d cav %s matches: %s",
+                    logger.warning(
+                        "Missing attack_info file for CAV %s at case %06d pair %02d frame %02d",
+                        str(cav_id),
                         case_id,
                         pair_id,
                         frame_id,
-                        str(vehicle_id),
-                        json.dumps(debug_payload, sort_keys=True),
                     )
                     continue
-
                 attack_info = pickle_cache_load(attack_info_file)
-                if not _frame_has_valid_attack(attack_info, frame_id, vehicle_id):
-                    debug_payload["status"] = "invalid_attack_frame"
-                    logger.info(
-                        "[MATE_DEBUG] case %06d pair %02d frame %02d cav %s matches: %s",
+                if not _frame_has_valid_attack(attack_info, frame_id, cav_id):
+                    logger.warning(
+                        "Invalid attack for CAV %s at case %06d pair %02d frame %02d",
+                        str(cav_id),
                         case_id,
                         pair_id,
                         frame_id,
-                        str(vehicle_id),
-                        json.dumps(debug_payload, sort_keys=True),
                     )
                     continue
 
+                # Fetch the pred bboxes and pred scores of the current CAV.
                 prediction_file = os.path.join(
                     vehicle_dir,
                     "frame{}".format(frame_id),
@@ -330,68 +391,77 @@ def run_mate_attack_evaluation(
                 pred_boxes_sensor, pred_scores = _load_agent_prediction(
                     prediction_file=prediction_file,
                     frame_id=frame_id,
-                    agent_id=vehicle_id,
+                    agent_id=cav_id,
                     pickle_cache_load=pickle_cache_load,
+                    logger=logger,
                 )
 
-                vehicle_pose = np.asarray(frame_case[vehicle_id]["lidar_pose"], dtype=np.float32)
+                # Transform the pred bboxes in vehicle frame into lidar frame.
+                vehicle_pose = np.asarray(frame_case[cav_id]["lidar_pose"], dtype=np.float32)
                 pred_boxes_map = (
                     bbox_sensor_to_map(pred_boxes_sensor, vehicle_pose)
                     if pred_boxes_sensor.shape[0] > 0
                     else np.empty((0, 7), dtype=np.float32)
                 )
 
+                # Get the matched/unmatched prediction bboxes according to the ground truth.
                 assignment = jvc_distance_assignment(
                     left_boxes=pred_boxes_map,
-                    right_boxes=gt_bboxes_map,
+                    right_boxes=target_gt_bboxes_map,
                     max_distance_m=mate_config.assignment_distance_m,
                 )
                 matched_track_ids = []
-                if isinstance(gt_ids, np.ndarray) and gt_ids.shape[0] == gt_bboxes_map.shape[0]:
+                if (
+                    isinstance(target_gt_ids, np.ndarray)
+                    and target_gt_ids.shape[0] == target_gt_bboxes_map.shape[0]
+                ):
                     for _, gt_idx in assignment.matched_pairs:
-                        matched_track_ids.append(int(gt_ids[gt_idx]))
+                        matched_track_ids.append(int(target_gt_ids[gt_idx]))
                 debug_payload["matched_track_ids"] = matched_track_ids
                 debug_payload["matched_pairs"] = [
                     [int(li), int(ri)] for li, ri in assignment.matched_pairs
                 ]
                 debug_payload["unmatched_pred_indices"] = [int(x) for x in assignment.unmatched_left]
                 debug_payload["unmatched_gt_indices"] = [int(x) for x in assignment.unmatched_right]
-                unmatched_gt_ids = [int(gt_ids[idx]) for idx in assignment.unmatched_right]
+                unmatched_gt_ids = [int(target_gt_ids[idx]) for idx in assignment.unmatched_right]
                 debug_payload["unmatched_aggregator_gt_ids"] = unmatched_gt_ids
                 filtered_unmatched_gt_indices = [
                     int(idx) for idx in assignment.unmatched_right
-                    if int(gt_ids[idx]) in cav_gt_ids_set
+                    if int(target_gt_ids[idx]) in gt_track_ids_set
                 ]
                 debug_payload["filtered_unmatched_gt_indices"] = filtered_unmatched_gt_indices
                 debug_payload["filtered_unmatched_gt_ids"] = [
-                    int(gt_ids[idx]) for idx in filtered_unmatched_gt_indices
+                    int(target_gt_ids[idx]) for idx in filtered_unmatched_gt_indices
                 ]
                 logger.info(
                     "[MATE_DEBUG] case %06d pair %02d frame %02d cav %s matches: %s",
                     case_id,
                     pair_id,
                     frame_id,
-                    str(vehicle_id),
+                    str(cav_id),
                     json.dumps(debug_payload, sort_keys=True),
                 )
 
-                cavs[vehicle_id] = CAVFramePrediction(
+                # Store the predictions of the current CAV.
+                cavs[cav_id] = CAVFramePrediction(
                     pred_bboxes=pred_boxes_map,
                     pred_scores=pred_scores,
                     pose=vehicle_pose[:2],
-                    visible_gt_ids=np.asarray(gt_track_ids_list, dtype=np.int64),
-                    boxes_in_global=True,
+                    visible_gt_ids=np.asarray([target_track_id], dtype=np.int64),
+                    bboxes_in_global=True,
                 )
 
+            # Store the predictions of all CAVs in the current frame.
             scenario_frames.append(
                 FrameData(
                     frame_id=frame_id,
-                    gt_bboxes=gt_bboxes_map,
+                    gt_bboxes=target_gt_bboxes_map,
                     cavs=cavs,
-                    gt_ids=gt_ids,
+                    gt_ids=target_gt_ids,
                 )
             )
 
+        # Store data of all frames in one scenario.
         if len(scenario_frames) == 0:
             logger.warning(
                 "Skipping MATE on case %06d pair %02d: no frames available.",
@@ -399,7 +469,6 @@ def run_mate_attack_evaluation(
                 pair_id,
             )
             continue
-
         scenario_id = str(
             attack_group[0]["attack_meta"].get(
                 "scenario_id",
@@ -410,21 +479,20 @@ def run_mate_attack_evaluation(
             scenario_id="{}_case{:06d}_pair{:02d}".format(scenario_id, case_id, pair_id),
             frames=scenario_frames,
         )
-        pair_meta = attack_group[0]["attack_meta"]
-        victim_vehicle_id = pair_meta.get("victim_vehicle_id")
-        object_id = pair_meta.get("object_id")
 
+        # Run MATE.
         try:
             result = mate_estimator.run_scenario(scenario)
-        except Exception as exc:
+        except Exception as e:
             logger.warning(
                 "MATE failed on case %06d pair %02d: %s",
                 case_id,
                 pair_id,
-                str(exc),
+                str(e),
             )
             continue
 
+        # Log results.
         logger.info(
             "[MATE] case %06d pair %02d victim_vehicle_id: %s object_id: %s",
             case_id,

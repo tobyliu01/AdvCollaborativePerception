@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Callable, Dict, Hashable, List, Optional
+from typing import Dict, Hashable, List, Optional
 
 import numpy as np
 
@@ -12,11 +12,10 @@ TrackId = int
 
 @dataclass
 class PSM:
-    """Trust pseudomeasurement as (value, confidence), both in [0, 1]."""
+    """Trust pseudomeasurement: (value, confidence), both in [0, 1]."""
 
     value: float
     confidence: float
-    reason: str = ""
 
 
 @dataclass
@@ -30,13 +29,13 @@ class CAVFramePrediction:
     pred_bboxes: np.ndarray
     pred_scores: Optional[np.ndarray] = None
     pose: Optional[np.ndarray] = None
-    visible_gt_ids: Optional[np.ndarray] = None  # Ground truth track IDs of this CAV in the current frame
-    boxes_in_global: bool = False
+    visible_gt_ids: Optional[np.ndarray] = None  # Ground truth track IDs of this CAV in the current frame.
+    bboxes_in_global: bool = False
 
 
 @dataclass
 class FrameData:
-    """One scenario frame with GT and all CAV predictions."""
+    """One scenario frame with ground truth and all CAV predictions."""
 
     frame_id: int
     gt_bboxes: np.ndarray
@@ -61,6 +60,3 @@ class ScenarioTrustResult:
     final_track_trust: Dict[TrackId, float]
     agent_trust_history: Dict[AgentId, List[float]]
     track_trust_history: Dict[TrackId, List[float]] = field(default_factory=dict)
-
-
-BoxTransformFn = Callable[[AgentId, int, np.ndarray], np.ndarray]
