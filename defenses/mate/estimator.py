@@ -73,7 +73,6 @@ class MATEConfig:
     # Practical extension for GT-based evaluation of local FP predictions.
     # penalize_unmatched_predictions: if True, unmatched local predictions add negative agent PSMs.
     # min_psm_confidence: lower bound on confidence to avoid completely zero-weight measurements.
-    # Both are implementation design choices.
     penalize_unmatched_predictions: bool = True
     min_psm_confidence: float = 0.05
 
@@ -82,6 +81,7 @@ class MATEConfig:
 class _FrameAssociation:
     matched_track_ids: List[TrackId]
     missed_track_ids_in_fov: List[TrackId]
+    self_reward_track_ids: List[TrackId]
     unmatched_prediction_scores: np.ndarray
 
 
@@ -202,9 +202,13 @@ class MATEEstimator:
                     visible_gt_ids = None
 
             missed_track_ids_in_fov: List[TrackId] = []
+            self_reward_track_ids: List[TrackId] = []
             for gt_idx in assignment.unmatched_right:
                 track_id = int(gt_track_ids[gt_idx])
                 if visible_gt_ids is not None and track_id not in visible_gt_ids:
+                    # A CAV cannot see itself. Skip the agent PSM, but reward its own track.
+                    if str(track_id) == str(agent_id):
+                        self_reward_track_ids.append(track_id)
                     continue
                 gt_box = gt_boxes[gt_idx]
                 if self.visibility_model.is_visible(cav, gt_box, frame_idx):
@@ -218,6 +222,7 @@ class MATEEstimator:
             frame_association[agent_id] = _FrameAssociation(
                 matched_track_ids=matched_track_ids,
                 missed_track_ids_in_fov=missed_track_ids_in_fov,
+                self_reward_track_ids=self_reward_track_ids,
                 unmatched_prediction_scores=unmatched_scores,
             )
         return frame_association
@@ -238,6 +243,10 @@ class MATEEstimator:
             for track_id in assoc.missed_track_ids_in_fov:
                 track_psms.setdefault(track_id, []).append(
                     PSM(value=0.0, confidence=conf)
+                )
+            for track_id in assoc.self_reward_track_ids:
+                track_psms.setdefault(track_id, []).append(
+                    PSM(value=1.0, confidence=conf)
                 )
         return track_psms
 

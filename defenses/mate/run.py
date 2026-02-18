@@ -158,7 +158,9 @@ def run_mate_attack_evaluation(
         return
 
     case_cache: dict[int, Any] = {}
-    mate_config = MATEConfig()
+    mate_config = MATEConfig(
+        penalize_unmatched_predictions=False,
+    )
     mate_estimator = MATEEstimator(config=mate_config)
 
     # Iterate all scenarios.
