@@ -158,10 +158,7 @@ def run_mate_attack_evaluation(
         return
 
     case_cache: dict[int, Any] = {}
-    # Only penalize the adv object track.
-    mate_config = MATEConfig(
-        penalize_unmatched_predictions=False,
-    )
+    mate_config = MATEConfig()
     mate_estimator = MATEEstimator(config=mate_config)
 
     # Iterate all scenarios.
@@ -170,7 +167,6 @@ def run_mate_attack_evaluation(
         pair_meta = attack_group[0]["attack_meta"]
         victim_vehicle_id = pair_meta.get("victim_vehicle_id")
         object_id = pair_meta.get("object_id")
-        target_track_id = int(object_id)
 
         try:
             if case_id not in case_cache:
@@ -187,15 +183,6 @@ def run_mate_attack_evaluation(
                 case_id,
                 pair_id,
                 str(e),
-            )
-            continue
-
-        if target_track_id is None:
-            logger.warning(
-                "Skipping case %06d pair %02d: invalid object_id %s.",
-                case_id,
-                pair_id,
-                str(object_id),
             )
             continue
 
@@ -281,22 +268,6 @@ def run_mate_attack_evaluation(
                 gt_ids = np.empty((0,), dtype=np.int64)
                 gt_bboxes_map = np.empty((0, 7), dtype=np.float32)
 
-            # **********IMPORTANT: only evaluate the attack target track.**********
-            target_mask = gt_ids == target_track_id
-            if np.any(target_mask):
-                target_gt_ids = gt_ids[target_mask]
-                target_gt_bboxes_map = gt_bboxes_map[target_mask]
-            else:
-                logger.warning(
-                    "Target track %s not found in aggregator ground truth at case %06d pair %02d frame %02d.",
-                    str(target_track_id),
-                    case_id,
-                    pair_id,
-                    frame_id,
-                )
-                target_gt_ids = np.empty((0,), dtype=np.int64)
-                target_gt_bboxes_map = np.empty((0, 7), dtype=np.float32)
-
             cavs: dict[Any, CAVFramePrediction] = {}
             # Iterate all CAVs in this frame.
             for cav_id in cav_ids:
@@ -304,11 +275,8 @@ def run_mate_attack_evaluation(
                 gt_track_ids_set = set(gt_track_ids_list)
                 aggregator_gt_ids_list = [int(x) for x in gt_ids.tolist()]
                 debug_payload = {
-                    "target_track_id": target_track_id,
                     "gt_track_ids": gt_track_ids_list,
                     "aggregator_gt_ids": aggregator_gt_ids_list,
-                    "target_in_aggregator": bool(np.any(target_mask)),
-                    "target_in_cav_gt": bool(target_track_id in gt_track_ids_set),
                     "unmatched_pred_used_for_trust": bool(mate_config.penalize_unmatched_predictions),
                     "matched_track_ids": [],
                     "matched_pairs": [],
@@ -333,16 +301,6 @@ def run_mate_attack_evaluation(
                 if attack_by_ego.get(cav_id) is None:
                     logger.warning(
                         "CAV %s has no attack entry in case %06d pair %02d frame %02d.",
-                        str(cav_id),
-                        case_id,
-                        pair_id,
-                        frame_id,
-                    )
-                    continue
-                if target_track_id not in gt_track_ids_set:
-                    logger.warning(
-                        "Target track %s not in CAV %s ground truth list at case %06d pair %02d frame %02d.",
-                        str(target_track_id),
                         str(cav_id),
                         case_id,
                         pair_id,
@@ -407,31 +365,31 @@ def run_mate_attack_evaluation(
                 # Get the matched/unmatched prediction bboxes according to the ground truth.
                 assignment = jvc_distance_assignment(
                     left_boxes=pred_boxes_map,
-                    right_boxes=target_gt_bboxes_map,
+                    right_boxes=gt_bboxes_map,
                     max_distance_m=mate_config.assignment_distance_m,
                 )
                 matched_track_ids = []
                 if (
-                    isinstance(target_gt_ids, np.ndarray)
-                    and target_gt_ids.shape[0] == target_gt_bboxes_map.shape[0]
+                    isinstance(gt_ids, np.ndarray)
+                    and gt_ids.shape[0] == gt_bboxes_map.shape[0]
                 ):
                     for _, gt_idx in assignment.matched_pairs:
-                        matched_track_ids.append(int(target_gt_ids[gt_idx]))
+                        matched_track_ids.append(int(gt_ids[gt_idx]))
                 debug_payload["matched_track_ids"] = matched_track_ids
                 debug_payload["matched_pairs"] = [
                     [int(li), int(ri)] for li, ri in assignment.matched_pairs
                 ]
                 debug_payload["unmatched_pred_indices"] = [int(x) for x in assignment.unmatched_left]
                 debug_payload["unmatched_gt_indices"] = [int(x) for x in assignment.unmatched_right]
-                unmatched_gt_ids = [int(target_gt_ids[idx]) for idx in assignment.unmatched_right]
+                unmatched_gt_ids = [int(gt_ids[idx]) for idx in assignment.unmatched_right]
                 debug_payload["unmatched_aggregator_gt_ids"] = unmatched_gt_ids
                 filtered_unmatched_gt_indices = [
                     int(idx) for idx in assignment.unmatched_right
-                    if int(target_gt_ids[idx]) in gt_track_ids_set
+                    if int(gt_ids[idx]) in gt_track_ids_set
                 ]
                 debug_payload["filtered_unmatched_gt_indices"] = filtered_unmatched_gt_indices
                 debug_payload["filtered_unmatched_gt_ids"] = [
-                    int(target_gt_ids[idx]) for idx in filtered_unmatched_gt_indices
+                    int(gt_ids[idx]) for idx in filtered_unmatched_gt_indices
                 ]
                 logger.info(
                     "[MATE_DEBUG] case %06d pair %02d frame %02d cav %s matches: %s",
@@ -447,7 +405,7 @@ def run_mate_attack_evaluation(
                     pred_bboxes=pred_boxes_map,
                     pred_scores=pred_scores,
                     pose=vehicle_pose[:2],
-                    visible_gt_ids=np.asarray([target_track_id], dtype=np.int64),
+                    visible_gt_ids=np.asarray(gt_track_ids_list, dtype=np.int64),
                     bboxes_in_global=True,
                 )
 
@@ -455,9 +413,9 @@ def run_mate_attack_evaluation(
             scenario_frames.append(
                 FrameData(
                     frame_id=frame_id,
-                    gt_bboxes=target_gt_bboxes_map,
+                    gt_bboxes=gt_bboxes_map,
                     cavs=cavs,
-                    gt_ids=target_gt_ids,
+                    gt_ids=gt_ids,
                 )
             )
 

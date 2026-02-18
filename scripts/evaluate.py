@@ -64,7 +64,7 @@ resume_case_id = None
 resume_pair_id = None
 
 logging.basicConfig(
-    filename=os.path.join(result_dir, "evaluate_adv_real_car_victim_alpha10.log"),
+    filename=os.path.join(result_dir, "evaluate_adv_real_car_victim_alpha1.log"),
     filemode="a",
     level=logging.INFO,
     format="%(levelname)s: %(message)s",
@@ -74,7 +74,7 @@ logging.basicConfig(
 dataset = OPV2VDataset(root_path=os.path.join(data_root, "OPV2V"), mode="test")
 
 # CHANGE THE MODEL NAME HERE
-default_shift_model = "adv_real_car_victim_alpha10"
+default_shift_model = "adv_real_car_victim_alpha1"
 # default_shift_model = "real_car"
 # CHANGE THE ATTACK DATASET HERE
 attack_dataset = "lidar_shift"
