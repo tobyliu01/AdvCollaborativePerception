@@ -12,10 +12,12 @@ from mvp.data.util import bbox_sensor_to_map
 from .association import jvc_distance_assignment
 from .estimator import MATEConfig, MATEEstimator
 from .types import CAVFramePrediction, FrameData, ScenarioData
+from .visibility import RangeVisibilityModel
 
 # Debug-only filter for rapid iteration.
 DEBUG_CASE_IDS = {0, 1}
 DEBUG_PAIR_IDS = {0, 1, 2}
+OPENCOOD_ROOT = "/workspace/hdd/datasets/yutongl/AdvCollaborativePerception/models/OpenCOOD"
 
 
 def _dict_get(dct: Any, key: Any, default: Any = None) -> Any:
@@ -124,6 +126,64 @@ def _frame_has_valid_attack(
     return isinstance(agent_info, dict) and len(agent_info) > 0
 
 
+def _load_perception_lidar_range(
+    perception_name: str,
+) -> np.ndarray:
+    config_path = os.path.join(
+        OPENCOOD_ROOT,
+        "{}_fusion".format(perception_name),
+        "config.yaml",
+    )
+    if not os.path.isfile(config_path):
+        raise FileNotFoundError(
+            "OpenCOOD config not found: {}".format(config_path)
+        )
+    try:
+        import yaml
+    except Exception as e:
+        raise ImportError("PyYAML is required to read OpenCOOD config: {}".format(str(e)))
+
+    with open(config_path, "r") as f:
+        config = yaml.load(f, Loader=yaml.Loader)
+    if not isinstance(config, dict):
+        raise ValueError("Invalid YAML config format: {}".format(config_path))
+
+    cav_lidar_range = _dict_get(
+        _dict_get(_dict_get(config, "postprocess", {}), "anchor_args", {}),
+        "cav_lidar_range",
+        None,
+    )
+    if not isinstance(cav_lidar_range, list):
+        raise ValueError(
+            "postprocess.anchor_args.cav_lidar_range must be a list in {}".format(config_path)
+        )
+    cav_lidar_range = np.asarray(cav_lidar_range, dtype=np.float32).reshape(-1)
+    if cav_lidar_range.shape[0] < 6:
+        raise ValueError("cav_lidar_range is incomplete in {}".format(config_path))
+    cav_lidar_range = cav_lidar_range[:6]
+    return cav_lidar_range
+
+
+def _visibility_status(
+    visibility_model: Any,
+    cav_prediction: CAVFramePrediction,
+    target_bbox: np.ndarray,
+    frame_idx: int,
+) -> dict:
+    if hasattr(visibility_model, "visibility_status"):
+        try:
+            status = visibility_model.visibility_status(cav_prediction, target_bbox, frame_idx)
+            if isinstance(status, dict):
+                return status
+        except Exception:
+            pass
+    visible = bool(visibility_model.is_visible(cav_prediction, target_bbox, frame_idx))
+    return {
+        "visible": visible,
+        "out_of_range": not visible,
+    }
+
+
 def run_mate_attack_evaluation(
     attacker: Any,
     dataset: Any,
@@ -158,10 +218,26 @@ def run_mate_attack_evaluation(
         return
 
     case_cache: dict[int, Any] = {}
+    perception_lidar_range = _load_perception_lidar_range(
+        perception_name=perception_name,
+    )
+    perception_lidar_range[0] = -120.0
+    perception_lidar_range[1] += 5.0
+    perception_lidar_range[3] = 120.0
+    perception_lidar_range[4] -= 5.0
+    logger.info("[MATE] Loaded perception cav_lidar_range: %s", perception_lidar_range.tolist())
     mate_config = MATEConfig(
         penalize_unmatched_predictions=False,
     )
-    mate_estimator = MATEEstimator(config=mate_config)
+    visibility_model = RangeVisibilityModel(
+        max_range_m=120.0,
+        cav_lidar_range=(
+            np.asarray(perception_lidar_range, dtype=np.float32)
+            if perception_lidar_range.shape[0] >= 6
+            else None
+        ),
+    )
+    mate_estimator = MATEEstimator(config=mate_config, visibility_model=visibility_model)
 
     # Iterate all scenarios.
     for (case_id, pair_id), attack_group in combination_groups.items():
@@ -279,14 +355,12 @@ def run_mate_attack_evaluation(
                 debug_payload = {
                     "gt_track_ids": gt_track_ids_list,
                     "aggregator_gt_ids": aggregator_gt_ids_list,
-                    "unmatched_pred_used_for_trust": bool(mate_config.penalize_unmatched_predictions),
                     "matched_track_ids": [],
-                    "matched_pairs": [],
-                    "unmatched_pred_indices": [],
-                    "unmatched_gt_indices": [],
                     "unmatched_aggregator_gt_ids": [],
-                    "filtered_unmatched_gt_indices": [],
                     "filtered_unmatched_gt_ids": [],
+                    "out_of_range_unmatched_gt_ids": [],
+                    "out_of_range_filtered_unmatched_gt_ids": [],
+                    "penalized_unmatched_gt_ids": [],
                     "status": "ok",
                 }
 
@@ -378,21 +452,49 @@ def run_mate_attack_evaluation(
                     for _, gt_idx in assignment.matched_pairs:
                         matched_track_ids.append(int(gt_ids[gt_idx]))
                 debug_payload["matched_track_ids"] = matched_track_ids
-                debug_payload["matched_pairs"] = [
-                    [int(li), int(ri)] for li, ri in assignment.matched_pairs
-                ]
-                debug_payload["unmatched_pred_indices"] = [int(x) for x in assignment.unmatched_left]
-                debug_payload["unmatched_gt_indices"] = [int(x) for x in assignment.unmatched_right]
                 unmatched_gt_ids = [int(gt_ids[idx]) for idx in assignment.unmatched_right]
                 debug_payload["unmatched_aggregator_gt_ids"] = unmatched_gt_ids
                 filtered_unmatched_gt_indices = [
                     int(idx) for idx in assignment.unmatched_right
                     if int(gt_ids[idx]) in gt_track_ids_set
                 ]
-                debug_payload["filtered_unmatched_gt_indices"] = filtered_unmatched_gt_indices
                 debug_payload["filtered_unmatched_gt_ids"] = [
                     int(gt_ids[idx]) for idx in filtered_unmatched_gt_indices
                 ]
+
+                cav_prediction = CAVFramePrediction(
+                    pred_bboxes=pred_boxes_map,
+                    pred_scores=pred_scores,
+                    pose=vehicle_pose,
+                    visible_gt_ids=np.asarray(gt_track_ids_list, dtype=np.int64),
+                    bboxes_in_global=True,
+                )
+                out_of_range_unmatched_gt_ids = []
+                out_of_range_filtered_unmatched_gt_ids = []
+                penalized_unmatched_gt_ids = []
+                for idx in assignment.unmatched_right:
+                    status = _visibility_status(
+                        mate_estimator.visibility_model,
+                        cav_prediction,
+                        gt_bboxes_map[int(idx)],
+                        frame_id,
+                    )
+                    if bool(status.get("out_of_range", False)):
+                        out_of_range_unmatched_gt_ids.append(int(gt_ids[int(idx)]))
+                for idx in filtered_unmatched_gt_indices:
+                    status = _visibility_status(
+                        mate_estimator.visibility_model,
+                        cav_prediction,
+                        gt_bboxes_map[int(idx)],
+                        frame_id,
+                    )
+                    if bool(status.get("out_of_range", False)):
+                        out_of_range_filtered_unmatched_gt_ids.append(int(gt_ids[int(idx)]))
+                    else:
+                        penalized_unmatched_gt_ids.append(int(gt_ids[int(idx)]))
+                debug_payload["out_of_range_unmatched_gt_ids"] = out_of_range_unmatched_gt_ids
+                debug_payload["out_of_range_filtered_unmatched_gt_ids"] = out_of_range_filtered_unmatched_gt_ids
+                debug_payload["penalized_unmatched_gt_ids"] = penalized_unmatched_gt_ids
                 logger.info(
                     "[MATE_DEBUG] case %06d pair %02d frame %02d cav %s matches: %s",
                     case_id,
@@ -403,13 +505,7 @@ def run_mate_attack_evaluation(
                 )
 
                 # Store the predictions of the current CAV.
-                cavs[cav_id] = CAVFramePrediction(
-                    pred_bboxes=pred_boxes_map,
-                    pred_scores=pred_scores,
-                    pose=vehicle_pose[:2],
-                    visible_gt_ids=np.asarray(gt_track_ids_list, dtype=np.int64),
-                    bboxes_in_global=True,
-                )
+                cavs[cav_id] = cav_prediction
 
             # Store the predictions of all CAVs in the current frame.
             scenario_frames.append(

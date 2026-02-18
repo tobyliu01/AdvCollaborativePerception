@@ -100,7 +100,6 @@ class MATEEstimator:
         self.box_transform = box_transform
         self.visibility_model = visibility_model or RangeVisibilityModel(
             max_range_m=self.config.fallback_visibility_range_m,
-            horizontal_fov_deg=self.config.fallback_visibility_fov_deg,
         )
 
     def run_scenario(self, scenario: ScenarioData) -> ScenarioTrustResult:
