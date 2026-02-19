@@ -56,10 +56,9 @@ class MATEConfig:
     # assignment_distance_m: max center-distance to accept a pred<->GT/AGG match.
     # Default 2.0m follows common tracking thresholding (also used in paper metrics appendix).
     assignment_distance_m: float = 2.0
-    # fallback_visibility_range_m/fov_deg: simple FOV model used if ray-traced FOV is unavailable.
+    # fallback_visibility_range_m: simple FOV model used if ray-traced FOV is unavailable.
     # Paper uses dynamic FOV from LiDAR ray tracing; this fallback is implementation-specific.
     fallback_visibility_range_m: float = 120.0
-    fallback_visibility_fov_deg: float = 360.0
 
     # Step 3: weighted Beta update
     # track_negativity_bias / threshold: extra penalty weight for negative track-side PSMs.
@@ -210,7 +209,12 @@ class MATEEstimator:
                         self_reward_track_ids.append(track_id)
                     continue
                 gt_box = gt_boxes[gt_idx]
-                if self.visibility_model.is_visible(cav, gt_box, frame_idx):
+                visibility_override = getattr(cav, "visibility_override_by_track_id", None)
+                if isinstance(visibility_override, dict) and track_id in visibility_override:
+                    is_visible = bool(visibility_override[track_id])
+                else:
+                    is_visible = bool(self.visibility_model.is_visible(cav, gt_box, frame_idx))
+                if is_visible:
                     missed_track_ids_in_fov.append(track_id)
 
             unmatched_scores = (

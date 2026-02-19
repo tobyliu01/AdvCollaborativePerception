@@ -30,6 +30,10 @@ class CAVFramePrediction:
     pred_scores: Optional[np.ndarray] = None
     pose: Optional[np.ndarray] = None
     visible_gt_ids: Optional[np.ndarray] = None  # Ground truth track IDs of this CAV in the current frame.
+    fov_polygon_fast: Optional[np.ndarray] = None
+    fov_polygon_slow: Optional[np.ndarray] = None
+    fov_polygon_mode: str = "fast"  # fast / slow / both
+    visibility_override_by_track_id: Optional[Dict[int, bool]] = None
     bboxes_in_global: bool = False
 
 

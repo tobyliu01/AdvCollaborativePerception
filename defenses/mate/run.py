@@ -7,17 +7,30 @@ from typing import Any, Callable, Sequence
 
 import numpy as np
 
+from mvp.config import model_3d_examples
 from mvp.data.util import bbox_sensor_to_map
 
 from .association import jvc_distance_assignment
 from .estimator import MATEConfig, MATEEstimator
+from .fov import (
+    apply_attack_to_lidar,
+    estimate_fov_polygon_fast,
+    estimate_fov_polygon_slow,
+    resolve_point_count_visibility_overrides,
+)
+from .fov_visualization import save_fov_visualization
 from .types import CAVFramePrediction, FrameData, ScenarioData
 from .visibility import RangeVisibilityModel
 
 # Debug-only filter for rapid iteration.
-DEBUG_CASE_IDS = {0, 1}
-DEBUG_PAIR_IDS = {0, 1, 2}
+DEBUG_CASE_IDS = {47}
+DEBUG_PAIR_IDS = {4}
+DEBUG_MODE = True
 OPENCOOD_ROOT = "/workspace/hdd/datasets/yutongl/AdvCollaborativePerception/models/OpenCOOD"
+FOV_POLYGON_MODE = "fast"  # fast / slow / both
+FOV_VISUALIZATION_ROOT = "/workspace/hdd/datasets/yutongl/AdvCollaborativePerception/mate_visulization"
+UNMATCHED_GT_VISIBILITY_METHOD = "point_count"  # polygon / point_count
+UNMATCHED_GT_POINT_THRESHOLD = 60
 
 
 def _dict_get(dct: Any, key: Any, default: Any = None) -> Any:
@@ -208,8 +221,11 @@ def run_mate_attack_evaluation(
         ego_meta = ego_attack["attack_meta"]
         case_id = int(ego_meta["case_id"])
         pair_id = int(ego_meta["pair_id"])
-        if case_id not in DEBUG_CASE_IDS or pair_id not in DEBUG_PAIR_IDS:
-            continue
+        if DEBUG_MODE:
+            if case_id not in DEBUG_CASE_IDS:
+                continue
+            if pair_id not in DEBUG_PAIR_IDS:
+                continue
         key = (case_id, pair_id)
         combination_groups.setdefault(key, []).append(ego_attack)
 
@@ -221,10 +237,10 @@ def run_mate_attack_evaluation(
     perception_lidar_range = _load_perception_lidar_range(
         perception_name=perception_name,
     )
-    perception_lidar_range[0] = -120.0
-    perception_lidar_range[1] += 5.0
-    perception_lidar_range[3] = 120.0
-    perception_lidar_range[4] -= 5.0
+    # perception_lidar_range[0] = -120.0
+    # perception_lidar_range[1] += 5.0
+    # perception_lidar_range[3] = 120.0
+    # perception_lidar_range[4] -= 5.0
     logger.info("[MATE] Loaded perception cav_lidar_range: %s", perception_lidar_range.tolist())
     mate_config = MATEConfig(
         penalize_unmatched_predictions=False,
@@ -238,6 +254,18 @@ def run_mate_attack_evaluation(
         ),
     )
     mate_estimator = MATEEstimator(config=mate_config, visibility_model=visibility_model)
+    unmatched_gt_visibility_method = str(UNMATCHED_GT_VISIBILITY_METHOD).lower()
+    if unmatched_gt_visibility_method not in {"polygon", "point_count"}:
+        raise ValueError(
+            "UNMATCHED_GT_VISIBILITY_METHOD must be one of {polygon, point_count}, got {}".format(
+                UNMATCHED_GT_VISIBILITY_METHOD
+            )
+        )
+    logger.info(
+        "[MATE] unmatched_gt_visibility_method: %s point_threshold: %d",
+        unmatched_gt_visibility_method,
+        int(UNMATCHED_GT_POINT_THRESHOLD),
+    )
 
     # Iterate all scenarios.
     for (case_id, pair_id), attack_group in combination_groups.items():
@@ -245,13 +273,19 @@ def run_mate_attack_evaluation(
         pair_meta = attack_group[0]["attack_meta"]
         victim_vehicle_id = pair_meta.get("victim_vehicle_id")
         object_id = pair_meta.get("object_id")
+        victim_vehicle_id_str = str(victim_vehicle_id) if victim_vehicle_id is not None else None
+        target_object_id = None
+        try:
+            target_object_id = int(object_id)
+        except Exception:
+            target_object_id = None
 
         try:
             if case_id not in case_cache:
                 case_cache[case_id] = dataset.get_case(
                     case_id,
                     tag="multi_frame",
-                    use_lidar=False,
+                    use_lidar=True,
                     use_camera=False,
                 )
             case = case_cache[case_id]
@@ -317,7 +351,7 @@ def run_mate_attack_evaluation(
                     obj_id for obj_id, keep in zip(local_object_ids, ego_id_removal_mask) if keep
                 ]
 
-                # Transform bbox in local vehicle frame to map frame
+                # Transform bbox in local vehicle frame to map frame.
                 frame_vehicle_pose = np.asarray(
                     frame_vehicle_data["lidar_pose"], dtype=np.float32
                 )
@@ -326,6 +360,21 @@ def run_mate_attack_evaluation(
                     if local_gt_bboxes_sensor.shape[0] > 0
                     else np.empty((0, 7), dtype=np.float32)
                 )
+                if target_object_id is not None:
+                    attack_bbox = np.copy(
+                        attack_by_ego[frame_cav_id]["attack_meta"]["bboxes"][frame_id]
+                    )
+                    attack_bbox[3:6] = model_3d_examples[default_shift_model][3:6]
+                    target_bbox_map = bbox_sensor_to_map(
+                        np.asarray(attack_bbox, dtype=np.float32).reshape(1, 7),
+                        frame_vehicle_pose,
+                    )[0]
+                    target_id_str = str(int(target_object_id))
+                    for local_idx, local_obj_id in enumerate(local_object_ids):
+                        if str(local_obj_id) == target_id_str:
+                            if local_idx < local_gt_bboxes_map.shape[0]:
+                                local_gt_bboxes_map[local_idx] = target_bbox_map
+                            break
 
                 # Build a list of all track IDs of the current CAV. Also add the track ID and bbox in aggregator list.
                 cav_gt_ids: list[int] = []
@@ -360,7 +409,13 @@ def run_mate_attack_evaluation(
                     "filtered_unmatched_gt_ids": [],
                     "out_of_range_unmatched_gt_ids": [],
                     "out_of_range_filtered_unmatched_gt_ids": [],
+                    "out_of_polygon_filtered_unmatched_gt_ids": [],
+                    "out_of_point_count_filtered_unmatched_gt_ids": [],
+                    "point_count_by_track_id": {},
+                    "forced_penalized_target_unmatched_gt_ids": [],
                     "penalized_unmatched_gt_ids": [],
+                    "unmatched_gt_visibility_method": unmatched_gt_visibility_method,
+                    "unmatched_gt_point_threshold": int(UNMATCHED_GT_POINT_THRESHOLD),
                     "status": "ok",
                 }
 
@@ -438,6 +493,50 @@ def run_mate_attack_evaluation(
                     else np.empty((0, 7), dtype=np.float32)
                 )
 
+                frame_attack_data = _frame_payload(attack_info, frame_id)
+                attack_entry = _dict_get(frame_attack_data, cav_id, {})
+                base_lidar = np.asarray(
+                    frame_case[cav_id].get("lidar", np.empty((0, 4), dtype=np.float32)),
+                    dtype=np.float32,
+                )
+                attacked_lidar = apply_attack_to_lidar(base_lidar, attack_entry)
+                fov_polygon_fast = np.empty((0, 2), dtype=np.float32)
+                fov_polygon_slow = np.empty((0, 2), dtype=np.float32)
+                if unmatched_gt_visibility_method == "polygon":
+                    range_max = max(
+                        120.0,
+                        abs(float(perception_lidar_range[0])),
+                        abs(float(perception_lidar_range[1])),
+                        abs(float(perception_lidar_range[3])),
+                        abs(float(perception_lidar_range[4])),
+                    )
+                    polygon_mode = str(FOV_POLYGON_MODE).lower()
+                    if polygon_mode in {"fast", "both"}:
+                        fov_polygon_fast = estimate_fov_polygon_fast(
+                            lidar=attacked_lidar,
+                            z_min=float(perception_lidar_range[2]),
+                            z_max=float(perception_lidar_range[5]),
+                            range_max=float(range_max),
+                        )
+                    if polygon_mode in {"slow", "both"}:
+                        fov_polygon_slow = estimate_fov_polygon_slow(
+                            lidar=attacked_lidar,
+                            z_min=float(perception_lidar_range[2]),
+                            z_max=float(perception_lidar_range[5]),
+                            range_max=float(range_max),
+                        )
+                save_fov_visualization(
+                    output_root=FOV_VISUALIZATION_ROOT,
+                    case_id=case_id,
+                    pair_id=pair_id,
+                    frame_id=frame_id,
+                    cav_id=cav_id,
+                    lidar_local=attacked_lidar,
+                    pred_boxes_local=pred_boxes_sensor,
+                    fov_polygon_fast=fov_polygon_fast,
+                    fov_polygon_slow=fov_polygon_slow,
+                )
+
                 # Get the matched/unmatched prediction bboxes according to the ground truth.
                 assignment = jvc_distance_assignment(
                     left_boxes=pred_boxes_map,
@@ -467,42 +566,128 @@ def run_mate_attack_evaluation(
                     pred_scores=pred_scores,
                     pose=vehicle_pose,
                     visible_gt_ids=np.asarray(gt_track_ids_list, dtype=np.int64),
+                    fov_polygon_fast=fov_polygon_fast,
+                    fov_polygon_slow=fov_polygon_slow,
+                    fov_polygon_mode=FOV_POLYGON_MODE,
+                    visibility_override_by_track_id={},
                     bboxes_in_global=True,
                 )
+                status_by_track_id: dict[int, dict] = {}
+                visibility_override_by_track_id: dict[int, bool] = {}
+                point_count_by_track_id: dict[int, int] = {}
+                forced_penalized_target_unmatched_gt_ids = []
+                for gt_idx in filtered_unmatched_gt_indices:
+                    track_id = int(gt_ids[int(gt_idx)])
+                    status = _visibility_status(
+                        mate_estimator.visibility_model,
+                        cav_prediction,
+                        gt_bboxes_map[int(gt_idx)],
+                        frame_id,
+                    )
+                    status_by_track_id[track_id] = status
+                    out_of_distance_range = bool(
+                        status.get("out_of_range_120m", False)
+                        or status.get("out_of_model_range", False)
+                    )
+                    if unmatched_gt_visibility_method == "polygon":
+                        if out_of_distance_range:
+                            visibility_override_by_track_id[track_id] = False
+                        else:
+                            visibility_override_by_track_id[track_id] = not bool(
+                                status.get("out_of_polygon", False)
+                            )
+
+                if unmatched_gt_visibility_method == "point_count":
+                    forced_track_id = None
+                    if (
+                        victim_vehicle_id_str is not None
+                        and str(cav_id) == victim_vehicle_id_str
+                        and target_object_id is not None
+                    ):
+                        forced_track_id = int(target_object_id)
+                    (
+                        visibility_override_by_track_id,
+                        point_count_by_track_id,
+                        forced_penalized_target_unmatched_gt_ids,
+                    ) = resolve_point_count_visibility_overrides(
+                        gt_ids=gt_ids,
+                        gt_bboxes_map=gt_bboxes_map,
+                        filtered_unmatched_gt_indices=filtered_unmatched_gt_indices,
+                        status_by_track_id=status_by_track_id,
+                        cav_pose=vehicle_pose,
+                        points_sensor=attacked_lidar,
+                        point_threshold=int(UNMATCHED_GT_POINT_THRESHOLD),
+                        forced_track_id=forced_track_id,
+                    )
+                    for track_id, point_count in point_count_by_track_id.items():
+                        debug_payload["point_count_by_track_id"][str(track_id)] = int(point_count)
+                cav_prediction.visibility_override_by_track_id = visibility_override_by_track_id
+
                 out_of_range_unmatched_gt_ids = []
                 out_of_range_filtered_unmatched_gt_ids = []
+                out_of_polygon_filtered_unmatched_gt_ids = []
+                out_of_point_count_filtered_unmatched_gt_ids = []
                 penalized_unmatched_gt_ids = []
                 for idx in assignment.unmatched_right:
-                    status = _visibility_status(
-                        mate_estimator.visibility_model,
-                        cav_prediction,
-                        gt_bboxes_map[int(idx)],
-                        frame_id,
-                    )
-                    if bool(status.get("out_of_range", False)):
+                    track_id = int(gt_ids[int(idx)])
+                    status = status_by_track_id.get(track_id)
+                    if status is None:
+                        status = _visibility_status(
+                            mate_estimator.visibility_model,
+                            cav_prediction,
+                            gt_bboxes_map[int(idx)],
+                            frame_id,
+                        )
+                    if bool(status.get("out_of_range_120m", False)) or bool(
+                        status.get("out_of_model_range", False)
+                    ):
                         out_of_range_unmatched_gt_ids.append(int(gt_ids[int(idx)]))
                 for idx in filtered_unmatched_gt_indices:
-                    status = _visibility_status(
-                        mate_estimator.visibility_model,
-                        cav_prediction,
-                        gt_bboxes_map[int(idx)],
-                        frame_id,
+                    track_id = int(gt_ids[int(idx)])
+                    status = status_by_track_id.get(track_id)
+                    if status is None:
+                        status = _visibility_status(
+                            mate_estimator.visibility_model,
+                            cav_prediction,
+                            gt_bboxes_map[int(idx)],
+                            frame_id,
+                        )
+                    out_of_distance_range = bool(status.get("out_of_range_120m", False)) or bool(
+                        status.get("out_of_model_range", False)
                     )
-                    if bool(status.get("out_of_range", False)):
-                        out_of_range_filtered_unmatched_gt_ids.append(int(gt_ids[int(idx)]))
+                    if out_of_distance_range:
+                        out_of_range_filtered_unmatched_gt_ids.append(track_id)
+                        continue
+
+                    if bool(visibility_override_by_track_id.get(track_id, True)):
+                        penalized_unmatched_gt_ids.append(track_id)
+                        continue
+
+                    if unmatched_gt_visibility_method == "polygon":
+                        out_of_polygon_filtered_unmatched_gt_ids.append(track_id)
                     else:
-                        penalized_unmatched_gt_ids.append(int(gt_ids[int(idx)]))
+                        out_of_point_count_filtered_unmatched_gt_ids.append(track_id)
                 debug_payload["out_of_range_unmatched_gt_ids"] = out_of_range_unmatched_gt_ids
                 debug_payload["out_of_range_filtered_unmatched_gt_ids"] = out_of_range_filtered_unmatched_gt_ids
-                debug_payload["penalized_unmatched_gt_ids"] = penalized_unmatched_gt_ids
-                logger.info(
-                    "[MATE_DEBUG] case %06d pair %02d frame %02d cav %s matches: %s",
-                    case_id,
-                    pair_id,
-                    frame_id,
-                    str(cav_id),
-                    json.dumps(debug_payload, sort_keys=True),
+                debug_payload["out_of_polygon_filtered_unmatched_gt_ids"] = (
+                    out_of_polygon_filtered_unmatched_gt_ids
                 )
+                debug_payload["out_of_point_count_filtered_unmatched_gt_ids"] = (
+                    out_of_point_count_filtered_unmatched_gt_ids
+                )
+                debug_payload["forced_penalized_target_unmatched_gt_ids"] = (
+                    forced_penalized_target_unmatched_gt_ids
+                )
+                debug_payload["penalized_unmatched_gt_ids"] = penalized_unmatched_gt_ids
+                if DEBUG_MODE:
+                    logger.info(
+                        "[MATE_DEBUG] case %06d pair %02d frame %02d cav %s matches: %s",
+                        case_id,
+                        pair_id,
+                        frame_id,
+                        str(cav_id),
+                        json.dumps(debug_payload, sort_keys=True),
+                    )
 
                 # Store the predictions of the current CAV.
                 cavs[cav_id] = cav_prediction
