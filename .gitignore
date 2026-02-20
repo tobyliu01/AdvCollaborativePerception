@@ -6,6 +6,7 @@
 *.log
 *.out
 *.txt
+*.pdf
 /data
 /models
 /result

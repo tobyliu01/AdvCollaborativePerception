@@ -36,10 +36,7 @@ class RangeVisibilityModel:
             return {
                 "visible": True,
                 "out_of_range": False,
-                "out_of_range_120m": False,
-                "out_of_model_range": False,
                 "out_of_polygon": False,
-                "distance_m": None,
             }
 
         cx = float(cav.pose[0])
@@ -79,10 +76,7 @@ class RangeVisibilityModel:
             return {
                 "visible": False,
                 "out_of_range": True,
-                "out_of_range_120m": out_of_range_120m,
-                "out_of_model_range": out_of_model_range,
                 "out_of_polygon": False,
-                "distance_m": dist,
             }
 
         if target_local is None and cav.pose is not None and cav.pose.shape[0] >= 6:
@@ -125,18 +119,12 @@ class RangeVisibilityModel:
         if out_of_polygon:
             return {
                 "visible": False,
-                "out_of_range": True,
-                "out_of_range_120m": False,
-                "out_of_model_range": False,
+                "out_of_range": False,
                 "out_of_polygon": True,
-                "distance_m": dist,
             }
 
         return {
             "visible": True,
             "out_of_range": False,
-            "out_of_range_120m": False,
-            "out_of_model_range": False,
             "out_of_polygon": False,
-            "distance_m": dist,
         }

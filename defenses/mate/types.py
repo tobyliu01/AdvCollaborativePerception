@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Dict, Hashable, List, Optional
+from typing import Dict, Hashable, List, Optional, Tuple
 
 import numpy as np
 
@@ -32,8 +32,11 @@ class CAVFramePrediction:
     visible_gt_ids: Optional[np.ndarray] = None  # Ground truth track IDs of this CAV in the current frame.
     fov_polygon_fast: Optional[np.ndarray] = None
     fov_polygon_slow: Optional[np.ndarray] = None
-    fov_polygon_mode: str = "fast"  # fast / slow / both
+    fov_polygon_mode: str = "fast" # Options: "fast" / "slow" / "both"
     visibility_override_by_track_id: Optional[Dict[int, bool]] = None
+    assignment_matched_pairs: Optional[List[Tuple[int, int]]] = None
+    assignment_unmatched_left: Optional[List[int]] = None
+    assignment_unmatched_right: Optional[List[int]] = None
     bboxes_in_global: bool = False
 
 

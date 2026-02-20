@@ -11,11 +11,6 @@ def apply_attack_to_lidar(
     lidar: np.ndarray,
     attack_entry: Optional[dict],
 ) -> np.ndarray:
-    """
-    Reconstruct attacked LiDAR from clean LiDAR and saved attack_info entry.
-
-    The attack_info format follows mvp/attack/lidar_shift_early_attacker.py.
-    """
     base = np.asarray(lidar, dtype=np.float32)
     if base.ndim != 2 or base.shape[1] < 3:
         return np.empty((0, 4), dtype=np.float32)
@@ -78,8 +73,8 @@ def _prepare_bev_points(
     return xy.astype(np.float32)
 
 
-def _fill_missing_ranges_cyclic(rng_out: np.ndarray, valid_mask: np.ndarray) -> np.ndarray:
-    out = rng_out.copy()
+def _fill_missing_ranges_cyclic(range_out: np.ndarray, valid_mask: np.ndarray) -> np.ndarray:
+    out = range_out.copy()
     valid_idx = np.where(valid_mask)[0]
     if valid_idx.shape[0] == 0:
         return out
@@ -95,12 +90,12 @@ def _fill_missing_ranges_cyclic(rng_out: np.ndarray, valid_mask: np.ndarray) -> 
 def _polygon_from_polar(azimuth: np.ndarray, ranges: np.ndarray) -> np.ndarray:
     x = ranges * np.cos(azimuth)
     y = ranges * np.sin(azimuth)
-    poly = np.stack([x, y], axis=1).astype(np.float32)
-    finite = np.isfinite(poly[:, 0]) & np.isfinite(poly[:, 1])
-    poly = poly[finite]
-    if poly.shape[0] < 3:
+    polygon = np.stack([x, y], axis=1).astype(np.float32)
+    finite = np.isfinite(polygon[:, 0]) & np.isfinite(polygon[:, 1])
+    polygon = polygon[finite]
+    if polygon.shape[0] < 3:
         return np.empty((0, 2), dtype=np.float32)
-    return poly
+    return polygon
 
 
 def estimate_fov_polygon_fast(
@@ -120,22 +115,22 @@ def estimate_fov_polygon_fast(
     if bev.shape[0] < 3:
         return np.empty((0, 2), dtype=np.float32)
 
-    az = np.arctan2(bev[:, 1], bev[:, 0])
-    rng = np.linalg.norm(bev, axis=1)
-    valid = np.isfinite(az) & np.isfinite(rng) & (rng > 1e-6)
-    az = az[valid]
-    rng = rng[valid]
-    if az.shape[0] < 3:
+    azimuth = np.arctan2(bev[:, 1], bev[:, 0])
+    range = np.linalg.norm(bev, axis=1)
+    valid = np.isfinite(azimuth) & np.isfinite(range) & (range > 1e-6)
+    azimuth = azimuth[valid]
+    range = range[valid]
+    if azimuth.shape[0] < 3:
         return np.empty((0, 2), dtype=np.float32)
 
-    az_edges = np.linspace(-np.pi, np.pi, num=int(n_azimuth_bins) + 1, dtype=np.float32)
-    range_upper = min(float(range_max), float(np.max(rng)))
+    azimuth_edges = np.linspace(-np.pi, np.pi, num=int(n_azimuth_bins) + 1, dtype=np.float32)
+    range_upper = min(float(range_max), float(np.max(range)))
     if range_upper <= 1e-6:
         return np.empty((0, 2), dtype=np.float32)
-    rng_edges = np.linspace(0.0, range_upper, num=int(n_range_bins) + 1, dtype=np.float32)
+    range_edges = np.linspace(0.0, range_upper, num=int(n_range_bins) + 1, dtype=np.float32)
 
-    hist, _, _ = np.histogram2d(az, rng, bins=[az_edges, rng_edges])
-    row_has = hist > 0
+    histogram, _, _ = np.histogram2d(azimuth, range, bins=[azimuth_edges, range_edges])
+    row_has = histogram > 0
     idx_last = np.full((int(n_azimuth_bins),), -1, dtype=np.int64)
     for i in range(int(n_azimuth_bins)):
         nz = np.where(row_has[i])[0]
@@ -145,12 +140,12 @@ def estimate_fov_polygon_fast(
     if not np.any(valid_rows):
         return np.empty((0, 2), dtype=np.float32)
 
-    rng_out = np.zeros((int(n_azimuth_bins),), dtype=np.float32)
-    rng_out[valid_rows] = rng_edges[idx_last[valid_rows] + 1]
-    rng_out = _fill_missing_ranges_cyclic(rng_out, valid_rows)
-    az_out = 0.5 * (az_edges[:-1] + az_edges[1:])
+    range_out = np.zeros((int(n_azimuth_bins),), dtype=np.float32)
+    range_out[valid_rows] = range_edges[idx_last[valid_rows] + 1]
+    range_out = _fill_missing_ranges_cyclic(range_out, valid_rows)
+    azimuth_out = 0.5 * (azimuth_edges[:-1] + azimuth_edges[1:])
 
-    return _polygon_from_polar(az_out, rng_out)
+    return _polygon_from_polar(azimuth_out, range_out)
 
 
 def estimate_fov_polygon_slow(
@@ -159,7 +154,7 @@ def estimate_fov_polygon_slow(
     z_max: float,
     range_max: float,
     n_azimuth_samples: int = 1000,
-    az_tolerance: float = 0.0,
+    azimuth_tolerance: float = 0.0,
 ) -> np.ndarray:
     bev = _prepare_bev_points(
         lidar=lidar,
@@ -170,48 +165,44 @@ def estimate_fov_polygon_slow(
     if bev.shape[0] < 3:
         return np.empty((0, 2), dtype=np.float32)
 
-    az = np.arctan2(bev[:, 1], bev[:, 0])
-    rng = np.linalg.norm(bev, axis=1)
-    valid = np.isfinite(az) & np.isfinite(rng) & (rng > 1e-6)
-    az = az[valid]
-    rng = rng[valid]
-    if az.shape[0] < 3:
+    azimuth = np.arctan2(bev[:, 1], bev[:, 0])
+    range = np.linalg.norm(bev, axis=1)
+    valid = np.isfinite(azimuth) & np.isfinite(range) & (range > 1e-6)
+    azimuth = azimuth[valid]
+    range = range[valid]
+    if azimuth.shape[0] < 3:
         return np.empty((0, 2), dtype=np.float32)
 
-    az_queries = np.linspace(-np.pi, np.pi, num=int(n_azimuth_samples), endpoint=False, dtype=np.float32)
-    rng_out = np.zeros((int(n_azimuth_samples),), dtype=np.float32)
+    azimuth_queries = np.linspace(-np.pi, np.pi, num=int(n_azimuth_samples), endpoint=False, dtype=np.float32)
+    range_out = np.zeros((int(n_azimuth_samples),), dtype=np.float32)
     valid_mask = np.zeros((int(n_azimuth_samples),), dtype=bool)
 
-    for i, az_q in enumerate(az_queries):
-        d = np.abs(((az - az_q + np.pi) % (2.0 * np.pi)) - np.pi)
-        m = d <= float(az_tolerance)
-        if np.any(m):
-            rng_out[i] = float(np.max(rng[m]))
+    for i, azimuth_query in enumerate(azimuth_queries):
+        distance = np.abs(((azimuth - azimuth_query + np.pi) % (2.0 * np.pi)) - np.pi)
+        mask = distance <= float(azimuth_tolerance)
+        if np.any(mask):
+            range_out[i] = float(np.max(range[mask]))
             valid_mask[i] = True
 
     if not np.any(valid_mask):
         return np.empty((0, 2), dtype=np.float32)
 
-    rng_out = _fill_missing_ranges_cyclic(rng_out, valid_mask)
-    return _polygon_from_polar(az_queries, rng_out)
+    range_out = _fill_missing_ranges_cyclic(range_out, valid_mask)
+    return _polygon_from_polar(azimuth_queries, range_out)
 
 
 def point_in_polygon_strict(point_xy: np.ndarray, polygon_xy: np.ndarray, eps: float = 1e-7) -> bool:
-    """
-    Strict point-in-polygon in 2D.
-    Returns False when the point lies exactly on an edge (boundary is treated as out-of-range).
-    """
-    p = np.asarray(point_xy, dtype=np.float64).reshape(-1)
-    poly = np.asarray(polygon_xy, dtype=np.float64)
-    if p.shape[0] < 2 or poly.ndim != 2 or poly.shape[0] < 3 or poly.shape[1] < 2:
+    point = np.asarray(point_xy, dtype=np.float64).reshape(-1)
+    polygon = np.asarray(polygon_xy, dtype=np.float64)
+    if point.shape[0] < 2 or polygon.ndim != 2 or polygon.shape[0] < 3 or polygon.shape[1] < 2:
         return False
-    x, y = float(p[0]), float(p[1])
-    n = poly.shape[0]
+    x, y = float(point[0]), float(point[1])
+    n = polygon.shape[0]
 
     # Boundary check first.
     for i in range(n):
-        x1, y1 = float(poly[i, 0]), float(poly[i, 1])
-        x2, y2 = float(poly[(i + 1) % n, 0]), float(poly[(i + 1) % n, 1])
+        x1, y1 = float(polygon[i, 0]), float(polygon[i, 1])
+        x2, y2 = float(polygon[(i + 1) % n, 0]), float(polygon[(i + 1) % n, 1])
         vx = x2 - x1
         vy = y2 - y1
         wx = x - x1
@@ -227,8 +218,8 @@ def point_in_polygon_strict(point_xy: np.ndarray, polygon_xy: np.ndarray, eps: f
     # Ray casting (strict interior).
     inside = False
     for i in range(n):
-        x1, y1 = float(poly[i, 0]), float(poly[i, 1])
-        x2, y2 = float(poly[(i + 1) % n, 0]), float(poly[(i + 1) % n, 1])
+        x1, y1 = float(polygon[i, 0]), float(polygon[i, 1])
+        x2, y2 = float(polygon[(i + 1) % n, 0]), float(polygon[(i + 1) % n, 1])
         intersects = ((y1 > y) != (y2 > y))
         if intersects:
             x_intersect = (x2 - x1) * (y - y1) / (y2 - y1 + 1e-12) + x1
@@ -242,8 +233,8 @@ def point_count_in_gt_bbox(
     cav_pose: np.ndarray,
     points_sensor: np.ndarray,
 ) -> int:
-    pts = np.asarray(points_sensor, dtype=np.float32)
-    if pts.ndim != 2 or pts.shape[0] == 0 or pts.shape[1] < 3:
+    points = np.asarray(points_sensor, dtype=np.float32)
+    if points.ndim != 2 or points.shape[0] == 0 or points.shape[1] < 3:
         return 0
 
     try:
@@ -259,7 +250,7 @@ def point_count_in_gt_bbox(
         return 0
 
     try:
-        point_indices = get_point_indices_in_bbox(bbox_local, pts)
+        point_indices = get_point_indices_in_bbox(bbox_local, points)
     except Exception:
         return 0
     return int(np.asarray(point_indices).reshape(-1).shape[0])
@@ -268,40 +259,21 @@ def point_count_in_gt_bbox(
 def resolve_point_count_visibility_overrides(
     gt_ids: np.ndarray,
     gt_bboxes_map: np.ndarray,
-    filtered_unmatched_gt_indices: List[int],
-    status_by_track_id: Dict[int, dict],
+    in_range_unmatched_gt_indices: List[int],
     cav_pose: np.ndarray,
     points_sensor: np.ndarray,
     point_threshold: int,
     forced_track_id: Optional[int] = None,
-) -> Tuple[Dict[int, bool], Dict[int, int], List[int]]:
-    """
-    Resolve visibility overrides for filtered unmatched tracks using point-count checks.
-
-    Returns:
-      - visibility_override_by_track_id: track_id -> visible(bool)
-      - point_count_by_track_id: track_id -> count (only tracks checked by point-count)
-      - forced_penalized_track_ids: track ids that bypass point-count and are forced visible
-    """
+) -> Tuple[Dict[int, bool], Dict[int, int]]:
     visibility_override_by_track_id: Dict[int, bool] = {}
     point_count_by_track_id: Dict[int, int] = {}
-    forced_penalized_track_ids: List[int] = []
     threshold = int(point_threshold)
 
-    for gt_idx in filtered_unmatched_gt_indices:
+    for gt_idx in in_range_unmatched_gt_indices:
         track_id = int(gt_ids[int(gt_idx)])
-        status = status_by_track_id.get(track_id, {})
-        out_of_distance_range = bool(
-            status.get("out_of_range_120m", False)
-            or status.get("out_of_model_range", False)
-        )
-        if out_of_distance_range:
-            visibility_override_by_track_id[track_id] = False
-            continue
 
         if forced_track_id is not None and track_id == int(forced_track_id):
             visibility_override_by_track_id[track_id] = True
-            forced_penalized_track_ids.append(track_id)
             continue
 
         point_count = point_count_in_gt_bbox(
@@ -315,5 +287,4 @@ def resolve_point_count_visibility_overrides(
     return (
         visibility_override_by_track_id,
         point_count_by_track_id,
-        forced_penalized_track_ids,
     )
