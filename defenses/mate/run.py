@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import pickle
 from collections import OrderedDict
 from typing import Any, Callable, Sequence
 
@@ -24,14 +25,15 @@ from .types import CAVFramePrediction, FrameData, ScenarioData
 from .visibility import RangeVisibilityModel
 
 # Debug-only filter for rapid iteration.
-DEBUG_CASE_IDS = {0, 1}
-DEBUG_PAIR_IDS = {0, 1, 2}
+DEBUG_CASE_IDS = {0, 1, 11, 21, 31, 41, 51, 61, 71, 81}
+DEBUG_PAIR_IDS = {0, 1, 2, 3, 4}
 DEBUG_MODE = True
 
 # Path and settings.
 OPENCOOD_ROOT = "/workspace/hdd/datasets/yutongl/AdvCollaborativePerception/models/OpenCOOD"
 FOV_POLYGON_MODE = "fast"  # fast / slow / both
 FOV_VISUALIZATION_ROOT = "/workspace/hdd/datasets/yutongl/AdvCollaborativePerception/mate_visulization"
+TRUST_SCORE_ROOT = "/workspace/hdd/datasets/yutongl/AdvCollaborativePerception/result/defense/mate"
 UNMATCHED_GROUND_TRUTH_VISIBILITY_METHOD = "point_count"  # polygon / point_count
 UNMATCHED_GROUND_TRUTH_POINT_THRESHOLD = 60
 
@@ -252,6 +254,7 @@ def run_mate_attack_evaluation(
         unmatched_gt_visibility_method,
         int(UNMATCHED_GROUND_TRUTH_POINT_THRESHOLD),
     )
+    trust_score_records = []
 
     # Build the core MATE estimator.
     mate_estimator = MATEEstimator(config=mate_config, visibility_model=visibility_model)
@@ -446,13 +449,12 @@ def run_mate_attack_evaluation(
                 attack_info = pickle_cache_load(attack_info_file)
                 if not _frame_has_valid_attack(attack_info, frame_id, cav_id):
                     logger.warning(
-                        "Invalid attack for CAV %s at case %06d pair %02d frame %02d",
+                        "Invalid attack for CAV %s at case %06d pair %02d frame %02d.",
                         cav_id,
                         case_id,
                         pair_id,
                         frame_id,
                     )
-                    continue
 
                 # Fetch the pred bboxes and pred scores of the current CAV.
                 prediction_file = os.path.join(
@@ -761,3 +763,24 @@ def run_mate_attack_evaluation(
             json.dumps(agent_trust_history, sort_keys=True),
         )
         logger.info("")
+
+        # Save the result of current scenario.
+        trust_score_records.append(
+            {
+                "case_id": int(case_id),
+                "pair_id": int(pair_id),
+                "victim_vehicle_id": victim_vehicle_id,
+                "object_id": object_id,
+                "final_agent_trust": final_agent_trust,
+            }
+        )
+
+    os.makedirs(TRUST_SCORE_ROOT, exist_ok=True)
+    trust_score_file = os.path.join(TRUST_SCORE_ROOT, "{}.pkl".format(default_shift_model))
+    with open(trust_score_file, "wb") as f:
+        pickle.dump(trust_score_records, f)
+    logger.info(
+        "[MATE] Saved trust scores to %s (%d records).",
+        trust_score_file,
+        len(trust_score_records),
+    )

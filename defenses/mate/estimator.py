@@ -21,15 +21,15 @@ class MATEConfig:
     # Step 0: priors
     # prior_agent_alpha/beta: initial trust prior for each agent, Beta(alpha, beta)
     # prior_track_alpha/beta: initial trust prior for each track, Beta(alpha, beta)
-    prior_agent_alpha: float = 2.0
-    prior_agent_beta: float = 2.0
+    prior_agent_alpha: float = 1.0
+    prior_agent_beta: float = 1.0
     prior_track_alpha: float = 2.0
     prior_track_beta: float = 2.0
 
     # Step 1: trust propagation
     # propagation_omega: PropP interpolation weight towards initial prior each frame.
     # Small value -> slow drift back to prior when no strong evidence exists.
-    propagation_omega: float = 0.02
+    propagation_omega: float = 0.01
     # propagation_delta_mu / target_mu: PropE for expectation drift.
     # Larger delta_mu -> slower drift of trust mean toward target_mu.
     propagation_delta_mu: Optional[float] = None
@@ -50,11 +50,11 @@ class MATEConfig:
     # agent_negativity_bias / threshold: extra penalty weight for negative agent-side PSMs.
     track_negativity_bias: float = 1.0
     track_negativity_threshold: float = 0.6
-    agent_negativity_bias: float = 6.0
+    agent_negativity_bias: float = 8.0
     agent_negativity_threshold: float = 0.6
 
     # Flag to penalize unmatched tracks of CAV's prediction.
-    penalize_unmatched_predictions: bool = True
+    penalize_unmatched_predictions: bool = False
 
 
 @dataclass
