@@ -13,6 +13,18 @@ from mvp.config import model_3d_examples
 from mvp.data.util import bbox_sensor_to_map
 
 from .association import jvc_distance_assignment
+from .config import (
+    ATTACK_OBJECT_ONLY_MODE,
+    DEBUG_CASE_IDS,
+    DEBUG_MODE,
+    DEBUG_PAIR_IDS,
+    FOV_POLYGON_MODE,
+    FOV_VISUALIZATION_ROOT,
+    OPENCOOD_ROOT,
+    TRUST_SCORE_ROOT,
+    UNMATCHED_GROUND_TRUTH_POINT_THRESHOLD,
+    UNMATCHED_GROUND_TRUTH_VISIBILITY_METHOD,
+)
 from .estimator import MATEConfig, MATEEstimator
 from .fov import (
     apply_attack_to_lidar,
@@ -23,21 +35,6 @@ from .fov import (
 from .fov_visualization import save_fov_visualization
 from .types import CAVFramePrediction, FrameData, ScenarioData
 from .visibility import RangeVisibilityModel
-
-# Debug-only filter for rapid iteration.
-DEBUG_CASE_IDS = {0, 1, 11, 21, 31, 41, 51, 61, 71, 81}
-DEBUG_PAIR_IDS = {0, 1, 2, 3, 4}
-DEBUG_MODE = False
-
-# Paths and settings.
-OPENCOOD_ROOT = "/workspace/hdd/datasets/yutongl/AdvCollaborativePerception/models/OpenCOOD"
-FOV_POLYGON_MODE = "fast"  # fast / slow / both
-FOV_VISUALIZATION_ROOT = "/workspace/hdd/datasets/yutongl/AdvCollaborativePerception/mate_visulization"
-TRUST_SCORE_ROOT = "/workspace/hdd/datasets/yutongl/AdvCollaborativePerception/result/defense/mate"
-UNMATCHED_GROUND_TRUTH_VISIBILITY_METHOD = "point_count"  # polygon / point_count
-UNMATCHED_GROUND_TRUTH_POINT_THRESHOLD = 60
-ATTACK_OBJECT_ONLY_MODE = True
-
 
 # Get a dict value using raw, string, or integer key forms with a fallback default.
 def _dict_get(dct: Any, key: Any, default: Any = None) -> Any:
