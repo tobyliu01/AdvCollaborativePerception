@@ -50,7 +50,7 @@ class MATEConfig:
     # agent_negativity_bias / threshold: extra penalty weight for negative agent-side PSMs.
     track_negativity_bias: float = 1.0
     track_negativity_threshold: float = 0.6
-    agent_negativity_bias: float = 8.0
+    agent_negativity_bias: float = 12.0
     agent_negativity_threshold: float = 0.6
 
     # Flag to penalize unmatched tracks of CAV's prediction.

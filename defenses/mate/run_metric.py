@@ -9,12 +9,15 @@ import numpy as np
 
 TRUST_SCORE_ROOT = "/workspace/hdd/datasets/yutongl/AdvCollaborativePerception/result/defense/mate"
 BASELINE_MESH_MODEL = "real_car"
-COMPARISON_MESH_MODEL = "adv_real_car_with_plane_victim_03"
+COMPARISON_MESH_MODEL = "real_car_with_plane"
 RESULT_LOG_FILE = os.path.join(TRUST_SCORE_ROOT, "result.log")
+ATTACK_OBJECT_ONLY_MODE = True
+SKIP_TWO_CAV_CASES = True
 
 
 def _load_trust_records(mesh_model_name: str) -> List[dict]:
-    file_path = os.path.join(TRUST_SCORE_ROOT, "{}.pkl".format(mesh_model_name))
+    score_suffix = "one" if ATTACK_OBJECT_ONLY_MODE else "all"
+    file_path = os.path.join(TRUST_SCORE_ROOT, "{}_{}.pkl".format(mesh_model_name, score_suffix))
     if not os.path.isfile(file_path):
         raise FileNotFoundError("Trust score file not found: {}".format(file_path))
     with open(file_path, "rb") as f:
@@ -76,6 +79,10 @@ def main() -> None:
 
         baseline_trust = _normalize_trust_map(baseline_record.get("final_agent_trust", {}))
         comparison_trust = _normalize_trust_map(comparison_record.get("final_agent_trust", {}))
+        if SKIP_TWO_CAV_CASES:
+            cav_ids_union = set(baseline_trust.keys()).union(set(comparison_trust.keys()))
+            if len(cav_ids_union) == 2:
+                continue
         if victim_key not in baseline_trust or victim_key not in comparison_trust:
             continue
 

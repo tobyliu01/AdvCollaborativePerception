@@ -27,15 +27,16 @@ from .visibility import RangeVisibilityModel
 # Debug-only filter for rapid iteration.
 DEBUG_CASE_IDS = {0, 1, 11, 21, 31, 41, 51, 61, 71, 81}
 DEBUG_PAIR_IDS = {0, 1, 2, 3, 4}
-DEBUG_MODE = True
+DEBUG_MODE = False
 
-# Path and settings.
+# Paths and settings.
 OPENCOOD_ROOT = "/workspace/hdd/datasets/yutongl/AdvCollaborativePerception/models/OpenCOOD"
 FOV_POLYGON_MODE = "fast"  # fast / slow / both
 FOV_VISUALIZATION_ROOT = "/workspace/hdd/datasets/yutongl/AdvCollaborativePerception/mate_visulization"
 TRUST_SCORE_ROOT = "/workspace/hdd/datasets/yutongl/AdvCollaborativePerception/result/defense/mate"
 UNMATCHED_GROUND_TRUTH_VISIBILITY_METHOD = "point_count"  # polygon / point_count
 UNMATCHED_GROUND_TRUTH_POINT_THRESHOLD = 60
+ATTACK_OBJECT_ONLY_MODE = True
 
 
 # Get a dict value using raw, string, or integer key forms with a fallback default.
@@ -266,6 +267,7 @@ def run_mate_attack_evaluation(
         victim_vehicle_id = pair_meta.get("victim_vehicle_id")
         object_id = pair_meta.get("object_id")
         target_object_id = object_id
+        assert(target_object_id is not None)
 
         try:
             if case_id not in case_cache:
@@ -383,6 +385,16 @@ def run_mate_attack_evaluation(
                 gt_ids = np.empty((0,), dtype=np.int64)
                 gt_bboxes_map = np.empty((0, 7), dtype=np.float32)
 
+            # In attack-object-only mode, keep only the selected target track in this frame.
+            if ATTACK_OBJECT_ONLY_MODE:
+                if target_object_id is None:
+                    gt_ids = np.empty((0,), dtype=np.int64)
+                    gt_bboxes_map = np.empty((0, 7), dtype=np.float32)
+                else:
+                    target_mask = (gt_ids == target_object_id)
+                    gt_ids = gt_ids[target_mask]
+                    gt_bboxes_map = gt_bboxes_map[target_mask]
+
             cavs: dict[Any, CAVFramePrediction] = {}
             # Iterate all CAVs in this frame.
             for cav_id in cav_ids:
@@ -401,6 +413,7 @@ def run_mate_attack_evaluation(
                     "out_of_point_count_filtered_unmatched_gt_ids": [],
                     "point_count_by_track_id": {},
                     "penalized_unmatched_gt_ids": [],
+                    "attack_object_only_mode": ATTACK_OBJECT_ONLY_MODE,
                     "status": "ok",
                 }
 
@@ -559,7 +572,9 @@ def run_mate_attack_evaluation(
                     fov_polygon_mode=FOV_POLYGON_MODE,
                     visibility_override_by_track_id={},
                     assignment_matched_pairs=list(assignment.matched_pairs),
-                    assignment_unmatched_left=list(assignment.unmatched_left),
+                    assignment_unmatched_left=(
+                        [] if ATTACK_OBJECT_ONLY_MODE else list(assignment.unmatched_left)
+                    ),
                     assignment_unmatched_right=list(assignment.unmatched_right),
                     bboxes_in_global=True,
                 )
@@ -776,7 +791,11 @@ def run_mate_attack_evaluation(
         )
 
     os.makedirs(TRUST_SCORE_ROOT, exist_ok=True)
-    trust_score_file = os.path.join(TRUST_SCORE_ROOT, "{}.pkl".format(default_shift_model))
+    trust_score_suffix = "one" if ATTACK_OBJECT_ONLY_MODE else "all"
+    trust_score_file = os.path.join(
+        TRUST_SCORE_ROOT,
+        "{}_{}.pkl".format(default_shift_model, trust_score_suffix),
+    )
     with open(trust_score_file, "wb") as f:
         pickle.dump(trust_score_records, f)
     logger.info(
