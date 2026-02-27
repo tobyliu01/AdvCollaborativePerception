@@ -12,6 +12,7 @@
 /models
 /result
 /scripts/output
+/tmp
 
 # tmp files
 .DS*

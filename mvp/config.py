@@ -42,6 +42,8 @@ model_3d_examples = {
     "real_car_with_plane": np.array([0,0,0,4.4,2.2,1.6,0]),
     "adv_real_car_victim_alpha1": np.array([0,0,0,4.4,2.2,1.62,0]),
     "adv_real_car_victim_alpha10": np.array([0,0,0,4.34,2.23,1.62,0]),
+    "adv_baseline_victim": np.array([0,0,0,4.42,2.26,1.62,0]),
+    "adv_baseline_nonvictim": np.array([0,0,0,4.42,2.24,1.62,0]),
     "adv_real_car_with_plane_victim_03": np.array([0,0,0,4.7,2.2,1.74,0]),
     "adv_real_car_with_plane_victim_02": np.array([0,0,0,4.6,2.25,1.7,0]),
     "adv_real_car_with_plane_victim_new1": np.array([0,0,0,4.4,2.2,2.15,0]),

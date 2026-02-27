@@ -5,7 +5,7 @@ Checklist before every run:
 3. default_shift_model
 4. IoU threshold
 
-nohup python evaluate.py > ../console_14.log 2>&1 &
+nohup python evaluate.py > ../console_2.log 2>&1 &
 
 Evaluation result structure:
 result/attack/model_name/case_id/pair_id/vehicle_id/frame_id & attack_info.pkl/
@@ -48,6 +48,7 @@ from mvp.attack.lidar_remove_intermediate_attacker import LidarRemoveIntermediat
 from mvp.attack.lidar_remove_late_attacker import LidarRemoveLateAttacker
 from mvp.defense.perception_defender import PerceptionDefender
 from defenses.mate.run import run_mate_attack_evaluation
+from defenses.cad.run import run_cad_attack_evaluation
 
 result_dir = os.path.normpath("/workspace/hdd/datasets/yutongl/AdvCollaborativePerception/result")
 os.makedirs(result_dir, exist_ok=True)
@@ -64,7 +65,7 @@ resume_case_id = None
 resume_pair_id = None
 
 logging.basicConfig(
-    filename=os.path.join(result_dir, "evaluate_real_car.log"),
+    filename=os.path.join(result_dir, "evaluate_adv_baseline_victim.log"),
     # filename=os.path.join(result_dir, "evaluate_adv_real_car_with_plane_victim_03.log"),
     filemode="a",
     level=logging.INFO,
@@ -74,7 +75,7 @@ logging.basicConfig(
 dataset = OPV2VDataset(root_path=os.path.join(data_root, "OPV2V"), mode="test")
 
 # CHANGE THE MODEL NAME HERE
-default_shift_model = "real_car"
+default_shift_model = "adv_baseline_victim"
 # default_shift_model = "adv_real_car_with_plane_victim_03"
 # CHANGE THE ATTACK DATASET HERE
 attack_dataset = "lidar_shift"
@@ -569,60 +570,72 @@ def attack_evaluation_defenses(attacker, perception_name, defense_name: str):
             pickle_cache_load=pickle_cache_load,
             logger=logging,
         )
+    elif defense_name == "cad":
+        run_cad_attack_evaluation(
+            attacker=attacker,
+            dataset=dataset,
+            result_dir=result_dir,
+            perception_model_name=perception_model_name,
+            default_shift_model=default_shift_model,
+            perception_name=perception_name,
+            attack_frame_ids=attack_frame_ids,
+            pickle_cache_load=pickle_cache_load,
+            logger=logging,
+        )
     else:
-        raise NotImplementedError("Only support MATE")
+        raise NotImplementedError("Support MATE and CAD")
 
 
-@normal_case_iterator
-def occupancy_map(lidar_seg_api, case_id=None, case=None, data_dir=None):
-    save_file = os.path.join(data_dir, "occupancy_map.pkl")
-    if os.path.isfile(save_file):
-        return
-    else:
-        logging.info("Processing occupancy map of case {}".format(case_id))
+# @normal_case_iterator
+# def occupancy_map(lidar_seg_api, case_id=None, case=None, data_dir=None):
+#     save_file = os.path.join(data_dir, "occupancy_map.pkl")
+#     if os.path.isfile(save_file):
+#         return
+#     else:
+#         logging.info("Processing occupancy map of case {}".format(case_id))
 
-    occupancy_feature = [{} for _ in range(TOTAL_FRAMES)]
-    for frame_id in attack_frame_ids:
-        for vehicle_id, vehicle_data in case[frame_id].items():
-            lidar, lidar_pose = vehicle_data["lidar"], vehicle_data["lidar_pose"]
-            pcd = pcd_sensor_to_map(lidar, lidar_pose)
+#     occupancy_feature = [{} for _ in range(TOTAL_FRAMES)]
+#     for frame_id in attack_frame_ids:
+#         for vehicle_id, vehicle_data in case[frame_id].items():
+#             lidar, lidar_pose = vehicle_data["lidar"], vehicle_data["lidar_pose"]
+#             pcd = pcd_sensor_to_map(lidar, lidar_pose)
 
-            lane_info = pickle_cache_load(os.path.join(data_root, "carla/{}_lane_info.pkl".format(vehicle_data["map"])))
-            lane_areas = pickle_cache_load(os.path.join(data_root, "carla/{}_lane_areas.pkl".format(vehicle_data["map"])))
-            lane_planes = pickle_cache_load(os.path.join(data_root, "carla/{}_ground_planes.pkl".format(vehicle_data["map"])))
+#             lane_info = pickle_cache_load(os.path.join(data_root, "carla/{}_lane_info.pkl".format(vehicle_data["map"])))
+#             lane_areas = pickle_cache_load(os.path.join(data_root, "carla/{}_lane_areas.pkl".format(vehicle_data["map"])))
+#             lane_planes = pickle_cache_load(os.path.join(data_root, "carla/{}_ground_planes.pkl".format(vehicle_data["map"])))
 
-            ground_indices, in_lane_mask, point_height = get_ground_plane(pcd, lane_info=lane_info, lane_areas=lane_areas, lane_planes=lane_planes, method="map")
-            lidar_seg = lidar_segmentation(lidar, method="squeezeseq", interface=lidar_seg_api)
+#             ground_indices, in_lane_mask, point_height = get_ground_plane(pcd, lane_info=lane_info, lane_areas=lane_areas, lane_planes=lane_planes, method="map")
+#             lidar_seg = lidar_segmentation(lidar, method="squeezeseq", interface=lidar_seg_api)
             
-            object_segments = filter_segmentation(lidar, lidar_seg, lidar_pose, in_lane_mask=in_lane_mask, point_height=point_height, max_range=50)
-            object_mask = np.zeros(pcd.shape[0]).astype(bool)
-            if len(object_segments) > 0:
-                object_indices = np.hstack(object_segments)
-                object_mask[object_indices] = True
+#             object_segments = filter_segmentation(lidar, lidar_seg, lidar_pose, in_lane_mask=in_lane_mask, point_height=point_height, max_range=50)
+#             object_mask = np.zeros(pcd.shape[0]).astype(bool)
+#             if len(object_segments) > 0:
+#                 object_indices = np.hstack(object_segments)
+#                 object_mask[object_indices] = True
 
-            ego_bbox = vehicle_data["ego_bbox"]
-            ego_area = bbox_to_polygon(ego_bbox)
-            ego_area_height = ego_bbox[5]
+#             ego_bbox = vehicle_data["ego_bbox"]
+#             ego_area = bbox_to_polygon(ego_bbox)
+#             ego_area_height = ego_bbox[5]
 
-            ret = {
-                "ego_area": ego_area,
-                "ego_area_height": ego_area_height,
-                "plane": None,
-                "ground_indices": ground_indices,
-                "point_height": point_height,
-                "object_segments": object_segments,
-            }
+#             ret = {
+#                 "ego_area": ego_area,
+#                 "ego_area_height": ego_area_height,
+#                 "plane": None,
+#                 "ground_indices": ground_indices,
+#                 "point_height": point_height,
+#                 "object_segments": object_segments,
+#             }
 
-            height_thres = 0
-            occupied_areas, occupied_areas_height = get_occupied_space(pcd, object_segments, point_height=point_height, height_thres=height_thres)
-            free_areas = get_free_space(lidar, lidar_pose, object_mask, in_lane_mask=in_lane_mask, point_height=point_height, max_range=50, height_thres=height_thres, height_tolerance=0.2)
-            ret["occupied_areas"] = occupied_areas
-            ret["occupied_areas_height"] = occupied_areas_height
-            ret["free_areas"] = free_areas
+#             height_thres = 0
+#             occupied_areas, occupied_areas_height = get_occupied_space(pcd, object_segments, point_height=point_height, height_thres=height_thres)
+#             free_areas = get_free_space(lidar, lidar_pose, object_mask, in_lane_mask=in_lane_mask, point_height=point_height, max_range=50, height_thres=height_thres, height_tolerance=0.2)
+#             ret["occupied_areas"] = occupied_areas
+#             ret["occupied_areas_height"] = occupied_areas_height
+#             ret["free_areas"] = free_areas
             
-            occupancy_feature[frame_id][vehicle_id] = ret
+#             occupancy_feature[frame_id][vehicle_id] = ret
 
-    pickle_cache_dump(occupancy_feature, save_file)
+#     pickle_cache_dump(occupancy_feature, save_file)
 
 
 # @attack_case_iterator
@@ -770,6 +783,7 @@ def main():
                 # attack_evaluation_iou(attacker, perception_name)
                 logging.info("######################## Run defenses evaluation ########################")
                 attack_evaluation_defenses(attacker, perception_name, "mate")
+                attack_evaluation_defenses(attacker, perception_name, "cad")
         # else:
         #     attack_evaluation(attacker, attacker.perception.name)
     
